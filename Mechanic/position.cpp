@@ -116,8 +116,8 @@ void loop() {
 //   Serial.println(" degC");
 
   displacement+=revolutioncount*wheelc;
-  position[0]=displacement*cos(yaw)
-  position[1]=displacement*sin(yaw)
+  position[0]=displacement*cos(yaw);
+  position[1]=displacement*sin(yaw);
   Serial.println(position);
   //this should calculate the position
   
