@@ -16,17 +16,13 @@ const float Kp=0.5;
 const float Ki=0.2;
 const float Kd=0.1;
 
-// these are the target values for pitch, roll and yaw 
-const float tpitch=0.0;
-const float troll=0.0;
-const float tyaw=0.0;
-
 // variables for PID controller
+const float tpitch=0.0;
 float pepitch;
 float epitch;
 float ipitch;        //integral of roll and pitch
 float dpitch;        //derivative of roll and pitch
-int m1, m2;                 //motor speeds
+float PWM;           //motor speeds
 
 
 void setup() {
@@ -45,7 +41,6 @@ void setup() {
 
 void loop() {
 
-  // roll and pitch are already variables declared in other files, still check this part
   epitch = tpitch - pitch;
   ipitch += epitch;
   dpitch=g.gyro.y;
