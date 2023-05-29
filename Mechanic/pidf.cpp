@@ -1,5 +1,7 @@
 #include "Globals.h"
-
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
 // Define stepper motor connections and steps per revolution:
 #define dirPin 12
 #define stepPin 14
@@ -20,10 +22,10 @@ const float troll=0.0;
 const float tyaw=0.0;
 
 // variables for PID controller
-float peroll, pepitch;
-float eroll, epitch;
-float iroll, ipitch;        //integral of roll and pitch
-float droll, dpitch;        //derivative of roll and pitch
+float pepitch;
+float epitch;
+float ipitch;        //integral of roll and pitch
+float dpitch;        //derivative of roll and pitch
 int m1, m2;                 //motor speeds
 
 
@@ -35,29 +37,20 @@ void setup() {
   pinMode(dirPin2, OUTPUT);
 
   // Initialize variables
-  eroll = 0.0;
   epitch = 0.0;
-  peroll = 0.0;
   pepitch = 0.0;
-  iroll = 0.0;
   ipitch = 0.0;
-  droll = 0.0;
   dpitch = 0.0;
 }
 
 void loop() {
 
   // roll and pitch are already variables declared in other files, still check this part
-  eroll = troll - roll;
   epitch = tpitch - pitch;
-  iroll += eroll;             //MIGHT BE WRONG
   ipitch += epitch;
-  droll = eroll - peroll;      //MIGHT BE WRONG
-  dpitch = epitch - pepitch;
-
-  // m1 = Kp * eroll + Ki * iroll + Kd * droll;
-  // m2 = Kp * epitch + Ki * ipitch + Kd * dpitch;
-
+  dpitch=g.gyro.y;
+  PWM = Kp * epitch + Ki * ipitch + Kd * dpitch;
+  //MAYBE DO FEEDBACK LOOP FOR PWM BECAUSE THERE WILL BE FRICTION
   if (motorSpeed1 >= 0) {
     digitalWrite(dirPin, HIGH);
   } else {

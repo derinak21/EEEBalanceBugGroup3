@@ -3,7 +3,7 @@
 // Define stepper motor connections and steps per revolution:
 #define dirPin 12
 #define stepPin 14
-#define stepsPerRevolution 200
+#define stepsPerRevolution        //LOOK INTO THIS
 
 #define dirPin2 27
 #define stepPin2 26
@@ -62,6 +62,10 @@ void loop() {
           digitalWrite(dirPin, HIGH);                      
           digitalWrite(dirPin2, LOW);                     
 
+
+          // delete for loops and use the steps to calculate the displacement
+          // change the delaymicroseconds accordingly 
+          // test it to see if this would work 
           for (int i = 0; i < stepsPerRevolution; i++) {
             digitalWrite(stepPin, HIGH);                  
             digitalWrite(stepPin2, HIGH);                   

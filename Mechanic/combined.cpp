@@ -187,7 +187,7 @@ void loop() {
             Serial.print("\t");
             Serial.println(ypr[2] * 180/M_PI);
         #endif
-
+        //yaw, roll. pitch
 
         #ifdef OUTPUT_READABLE_WORLDACCEL
             // display initial world-frame acceleration, adjusted to remove gravity
