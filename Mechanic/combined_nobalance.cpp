@@ -1,4 +1,4 @@
-// I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
+// // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
 
@@ -10,6 +10,12 @@
     #include "Wire.h"
 #endif
 
+#define dirPin 14
+#define stepPin 4
+#define stepsPerRevolution 200
+
+#define dirPin2 15
+#define stepPin2 23
 
 MPU6050 mpu;
 //MPU6050 mpu(0x69); // <-- use for AD0 high
@@ -17,23 +23,7 @@ MPU6050 mpu;
 
 #define OUTPUT_READABLE_YAWPITCHROLL
 
-// uncomment "OUTPUT_READABLE_REALACCEL" if you want to see acceleration
-// components with gravity removed. This acceleration reference frame is
-// not compensated for orientation, so +X is always +X according to the
-// sensor, just without the effects of gravity. If you want acceleration
-// compensated for orientation, us OUTPUT_READABLE_WORLDACCEL instead.
-//#define OUTPUT_READABLE_REALACCEL
-
-// uncomment "OUTPUT_READABLE_WORLDACCEL" if you want to see acceleration
-// components with gravity removed and adjusted for the world frame of
-// reference (yaw is relative to initial orientation, since no magnetometer
-// is present in this case). Could be quite handy in some cases.
-//#define OUTPUT_READABLE_WORLDACCEL
-
-
-
-
-#define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
+#define INTERRUPT_PIN  2 // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 bool blinkState = false;
 
@@ -101,13 +91,9 @@ void setup() {
     yaw=0.0;
     roll=0.0;
     pitch=0.0;
-    epitch = 0.0;
-    pepitch = 0.0;
-    ipitch = 0.0;
-    dpitch = 0.0;
     x=0.0;
     displacement=0.0;
-    wheelc=2*PI*3;
+    wheelc=2*PI*0.0325;
     // initialize serial communication
     // (115200 chosen because it is required for Teapot Demo output, but it's
     // really up to you depending on your project)
@@ -227,115 +213,95 @@ void loop() {
             Serial.print("\t");
             Serial.println(aaWorld.z);
         #endif
-
-    digitalWrite(dirPin, LOW);
-    digitalWrite(dirPin2, HIGH);
-          while (1){
-    // These four lines result in 1 step:
-    // digitalWrite(stepPin, HIGH);
-    // digitalWrite(stepPin2, HIGH);
-    // delayMicroseconds(2000);
-
-    // digitalWrite(stepPin, LOW);
-    // digitalWrite(stepPin2, LOW);
-    // delayMicroseconds(2000);
-
-    if (Serial.available()) {
+    
+    if (Serial.available()){ // empty buffer
       char command = Serial.read();
-      switch (command) {
 
-        case 'w':
-          Serial.println("forward");
-          digitalWrite(dirPin, LOW);                      
-          digitalWrite(dirPin2, HIGH);                     
-          digitalWrite(stepPin, HIGH);                  
-          digitalWrite(stepPin2, HIGH);                   
-          delayMicroseconds(2000);                     
-          digitalWrite(stepPin, LOW);                 
-          digitalWrite(stepPin2, LOW);                   
-          delayMicroseconds(2000);
-          x=yaw;
-          stepcount++;
-          turn=0;     
-          back=0;              
-          break;
+      if(command=='w'){
+          for (int i = 0; i <200; i++){
+            digitalWrite(dirPin, HIGH);
+            digitalWrite(dirPin2, LOW);
+            digitalWrite(stepPin, HIGH);
+            digitalWrite(stepPin2, HIGH);                   
+            delayMicroseconds(2000);                     
+            digitalWrite(stepPin, LOW);                 
+            digitalWrite(stepPin2, LOW);                   
+            delayMicroseconds(2000);
+            stepcount++;
+            turn=0;     
+            back=0; 
+            displacement=wheelc/200;
+            position[0]+=displacement*cos(yaw);
+            position[1]+=displacement*sin(yaw);   
+          }   
+          
+      }
+      if(command=='s'){
+        for (int i = 0; i <200; i++){
 
-        case 's':
-          Serial.println("backward");
-          digitalWrite(dirPin, HIGH);                      
-          digitalWrite(dirPin2, LOW);                     
-          digitalWrite(stepPin, HIGH);                  
-          digitalWrite(stepPin2, HIGH);                   
+          digitalWrite(dirPin, LOW);
+          digitalWrite(dirPin2, HIGH);
+          digitalWrite(stepPin, HIGH);
+          digitalWrite(stepPin2, HIGH);           
           delayMicroseconds(2000);                     
           digitalWrite(stepPin, LOW);                 
           digitalWrite(stepPin2, LOW);                   
           delayMicroseconds(2000); 
-          x=yaw;
           stepcount++; 
           turn=0;
           back=1; 
-          break;
-
-        //ASSUME THAT PIN IS LEFT AND PIN2 IS CONNECTED TO RIGHT MOTOR
-        case 'a':
-          Serial.println("left");
-          digitalWrite(dirPin, HIGH);                      
-          digitalWrite(dirPin2, LOW);                     
-          digitalWrite(stepPin, LOW);                  
-          digitalWrite(stepPin2, HIGH);                   
-          delayMicroseconds(2000);                     
-          digitalWrite(stepPin, LOW);                 
-          digitalWrite(stepPin2, LOW);                   
-          delayMicroseconds(2000); 
-          turn=1; 
-          back=0; 
-          break;
-
-        case 'd':
-          Serial.println("right");
-          digitalWrite(dirPin, LOW);                      
-          digitalWrite(dirPin2, HIGH);                     
-          digitalWrite(stepPin, HIGH);                  
-          digitalWrite(stepPin2, LOW);                   
-          delayMicroseconds(2000);                     
-          digitalWrite(stepPin, LOW);                 
-          digitalWrite(stepPin2, LOW);                   
-          delayMicroseconds(2000);
-          turn=1;
-          back=0; 
-          break;
-
-        default:
-          Serial.println("Invalid command");
-          break;
+          displacement=wheelc/200;
+          position[0]-=displacement*cos(yaw);
+          position[1]-=displacement*sin(yaw);          
         }
-    }
+      }
+        //ASSUME THAT PIN IS LEFT AND PIN2 IS CONNECTED TO RIGHT MOTOR
+        if(command=='a'){
+          for (int i = 0; i <200; i++){
+            digitalWrite(dirPin, HIGH);
+            digitalWrite(dirPin2, LOW);
+            digitalWrite(stepPin, LOW);
+            digitalWrite(stepPin2, HIGH);                  
+            delayMicroseconds(2000);                     
+            digitalWrite(stepPin, LOW);                 
+            digitalWrite(stepPin2, LOW);                   
+            delayMicroseconds(2000); 
+            turn=1; 
+            back=0; 
+            position[0]+=0.08-0.08*cos(yaw);
+            position[1]+=0.08*sin(yaw);          
+          }
+        }
+        
+        if(command=='d'){
+            for (int i = 0; i <200; i++){
+              digitalWrite(dirPin, HIGH);
+              digitalWrite(dirPin2, LOW);
+              digitalWrite(stepPin, HIGH);
+              digitalWrite(stepPin2, LOW);                  
+              delayMicroseconds(2000);                     
+              digitalWrite(stepPin, LOW);                 
+              digitalWrite(stepPin2, LOW);                   
+              delayMicroseconds(2000);
+              turn=1;
+              back=0; 
+              position[0]+=0.08-0.08*cos(yaw);
+              position[1]+=0.08*sin(yaw);          
+            }
+        }
+        
+        }
+    
+        while (!Serial.available());                 // wait for data
+        Serial.println("displacement: ");
+        Serial.println(displacement);
+        Serial.println("x: ");
+        Serial.println(position[0]);
+        Serial.println("y: ");
+        Serial.println(position[1]);
+        Serial.println("yaw: ");
+        Serial.println(yaw*180/M_PI);
 
-  }
-        // blink LED to indicate activity
-        blinkState = !blinkState;
-        digitalWrite(LED_PIN, blinkState);
     }
-    if(turn==0 && back==0){
-        displacement=stepcount*wheelc/200;
-        position[0]+=displacement*cos(yaw);
-        position[1]+=displacement*sin(yaw);
-    }
-    else if(turn==0 && back==1){
-        displacement=stepcount*wheelc/200;
-        position[0]-=displacement*cos(yaw);
-        position[1]-=displacement*sin(yaw);
-    }
-    else if(turn==1){
-        //CHANGE 8 BECAUSE THAT IS NOT HALF THE CHASSIS
-        //THIS NEEDS TO BE WORKED ON
-        position[0]+=8-8*cos(yaw);
-        position[1]+=8*sin(yaw);
-    }
-        position[2]=yaw;
-        Serial.println(position);
-  
+    
 }
-
-// float degreesPerStep = 360.0 / SPR; // Calculate the degrees per step
-// float currentPosition = stepCount * degreesPerStep; // Calculate the current position in degrees
