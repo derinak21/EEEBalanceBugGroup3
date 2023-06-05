@@ -107,9 +107,7 @@ void setup() {
     x=0.0;
     displacement=0.0;
     wheelc=2*PI*0.0325;
-    Kp=0.5;
-    Ki=0.2;
-    Kd=0.1;
+
 
 // variables for PID controller
     tpitch=0.0;
@@ -237,7 +235,10 @@ void loop() {
             Serial.print("\t");
             Serial.println(aaWorld.z);
         #endif
-
+        if(step<1000){
+        Kp=0.5;
+        Ki=0.2;
+        Kd=0.1;
         epitch = tpitch - pitch;
         ipitch += epitch;
         dpitch=mpu.getRotationZ();
@@ -274,8 +275,71 @@ void loop() {
             displacement=wheelc/200;
             position[0]+=displacement*cos(yaw);
             position[1]+=displacement*sin(yaw);
-        } 
-        
+        } }
+        else if(2000>step>=1000){
+            Kp=0.5;
+            Ki=0.2;
+            Kd=0.1;
+            epitch = tpitch - pitch;
+            ipitch += epitch;
+            dpitch=mpu.getRotationZ();
+            pid = Kp * epitch + Ki * ipitch + Kd * dpitch;
+            d=1/abs(pid);
+            if(pid>=0){
+                digitalWrite(dirPin, HIGH);
+                digitalWrite(dirPin2, LOW);
+                digitalWrite(stepPin, LOW);
+                digitalWrite(stepPin2, HIGH);                   
+                delayMicroseconds(d);                     
+                digitalWrite(stepPin, LOW);                 
+                digitalWrite(stepPin2, LOW);                   
+                delayMicroseconds(d);
+                stepcount++;
+            }
+            else{
+                digitalWrite(dirPin, LOW);
+                digitalWrite(dirPin2, HIGH);
+                digitalWrite(stepPin, HIGH);
+                digitalWrite(stepPin2, LOW);                   
+                delayMicroseconds(d);                     
+                digitalWrite(stepPin, LOW);                 
+                digitalWrite(stepPin2, LOW);                   
+                delayMicroseconds(d);
+                stepcount++;
+            }     
+        }
+        else if(step>2000){
+            Kp=0.5;
+            Ki=0.2;
+            Kd=0.1;
+            epitch = tpitch - pitch;
+            ipitch += epitch;
+            dpitch=mpu.getRotationZ();
+            pid = Kp * epitch + Ki * ipitch + Kd * dpitch;
+            d=1/abs(pid);
+            if(pid>=0){
+                digitalWrite(dirPin, HIGH);
+                digitalWrite(dirPin2, LOW);
+                digitalWrite(stepPin, HIGH);
+                digitalWrite(stepPin2, LOW);                   
+                delayMicroseconds(d);                     
+                digitalWrite(stepPin, LOW);                 
+                digitalWrite(stepPin2, LOW);                   
+                delayMicroseconds(d);
+                stepcount++;
+            }
+            else{
+                digitalWrite(dirPin, LOW);
+                digitalWrite(dirPin2, HIGH);
+                digitalWrite(stepPin, LOW);
+                digitalWrite(stepPin2, HIGH);                   
+                delayMicroseconds(d);                     
+                digitalWrite(stepPin, LOW);                 
+                digitalWrite(stepPin2, LOW);                   
+                delayMicroseconds(d);
+                stepcount++;
+            }     
+        }
         Serial.println("displacement: ");
         Serial.println(displacement);
         Serial.println("x: ");

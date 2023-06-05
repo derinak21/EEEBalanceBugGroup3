@@ -93,7 +93,7 @@ void setup() {
     pitch=0.0;
     x=0.0;
     displacement=0.0;
-    wheelc=2*PI*0.0325;
+    wheelc=2*PI*0.0325; //radius of the wheels are 0.0325
     // initialize serial communication
     // (115200 chosen because it is required for Teapot Demo output, but it's
     // really up to you depending on your project)
@@ -227,9 +227,6 @@ void loop() {
             digitalWrite(stepPin, LOW);                 
             digitalWrite(stepPin2, LOW);                   
             delayMicroseconds(2000);
-            stepcount++;
-            turn=0;     
-            back=0; 
             displacement=wheelc/200;
             position[0]+=displacement*cos(yaw);
             position[1]+=displacement*sin(yaw);   
@@ -247,9 +244,6 @@ void loop() {
           digitalWrite(stepPin, LOW);                 
           digitalWrite(stepPin2, LOW);                   
           delayMicroseconds(2000); 
-          stepcount++; 
-          turn=0;
-          back=1; 
           displacement=wheelc/200;
           position[0]-=displacement*cos(yaw);
           position[1]-=displacement*sin(yaw);          
@@ -266,10 +260,10 @@ void loop() {
             digitalWrite(stepPin, LOW);                 
             digitalWrite(stepPin2, LOW);                   
             delayMicroseconds(2000); 
-            turn=1; 
-            back=0; 
-            position[0]+=0.08-0.08*cos(yaw);
-            position[1]+=0.08*sin(yaw);          
+            arc = 2 * M_PI * 0.16 * (90/200); //one wheel revolution is 90 degree turn, here we take only 1 step, 1 step=1/200 revolution
+            chord=2*0.16*sin(arc/(2*0.16));    // the distance between two wheels is 0.16 which should be equal to radius of rotational movement 
+            position[0]+=chord*cos(90/200);
+            position[1]+=chord*sin(90/200);          
           }
         }
         
@@ -283,10 +277,15 @@ void loop() {
               digitalWrite(stepPin, LOW);                 
               digitalWrite(stepPin2, LOW);                   
               delayMicroseconds(2000);
-              turn=1;
-              back=0; 
-              position[0]+=0.08-0.08*cos(yaw);
-              position[1]+=0.08*sin(yaw);          
+              arc = 2 * M_PI * 0.16 * (90/200);
+              chord=2*0.16*sin(arc/(2*0.16));
+              arc = 2 * M_PI * 0.16 * (90/200);
+              chord = 2 * 0.16 * sin(arc / (2 * 0.16)); 
+              rotationAngle = yaw + (arc / 2); 
+
+              rotationangle = yaw + (arc / 2); // Calculate the angle of rotation from the initial yaw
+              position[0]+=chord*cos(yaw);
+              position[1]+=chord*sin(yaw);          
             }
         }
         
