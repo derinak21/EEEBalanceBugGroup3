@@ -1,13 +1,13 @@
-//SERVER SIDE CODE
+// ================================================================
+// ===               INITIALISATION FOR MOTION                ===
+// ================================================================
+// ================================================================
+// ===               PIN IS LEFT AND PIN2 IS RIGHT MOTOR        ===
+// ================================================================
 
-// // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
-// for both classes must be in the include path of your project
 #include "I2Cdev.h"
 
 #include "MPU6050_6Axis_MotionApps20.h"
-//#include "MPU6050.h" // not necessary if using MotionApps include file
-// Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
-// is used in I2Cdev.h
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     #include "Wire.h"
 #endif
@@ -20,14 +20,15 @@
 #define stepPin2 23
 
 MPU6050 mpu;
-//MPU6050 mpu(0x69); // <-- use for AD0 high
-
-
 #define OUTPUT_READABLE_YAWPITCHROLL
 
 #define INTERRUPT_PIN  2 // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 bool blinkState = false;
+
+// ================================================================
+// ===                   MPU INITIALISATION                     ===
+// ================================================================
 
 // MPU control/status vars
 bool dmpReady = false;  // set true if DMP init was successful
@@ -50,16 +51,23 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
 int stepcount=0;
-bool turn=0;
-bool back=0;
-float position[3] = {0.0, 0.0, 0.0};
+float position[2] = {0.0, 0.0};
+float positionrl[2] = {0.0, 0.0};
+float positionll[2] = {0.0, 0.0};
+float positionb1[2] = {0.0, 0.0};
+float positionb2[2] = {0.0, 0.0};
 float wheelc;   //CALCULATE WHEEL CIRCUMFERENCE AND ENTER IT HERE
 float displacement;
-float x;
 float yaw;
 float roll;
 float pitch;
+bool node;
+bool nodeoptions;
+float gradient1;
+float gradient2;
 
+float d0; //DEFINE THIS
+float d1; //DEFINE THIS
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -70,12 +78,50 @@ void dmpDataReady() {
     mpuInterrupt = true;
 }
 
+// ================================================================
+// ===              SETUP TO READ FROM FPGA                     ===
+// ================================================================
 
-//READ FROM FPGA
 #define RXD2 16
 #define TXD2 17
 byte reading[4];
 unsigned int fpga_r;
+
+// ================================================================
+// ===                    SETUP FOR SERVER                     ===
+// ================================================================
+
+#define USE_WIFI_NINA         false
+#define USE_WIFI101           false
+
+#include <WiFiWebServer.h>
+#include <WiFiHttpClient.h>
+#include <ArduinoJson.h>
+
+const char ssid[] = "ALINA";
+const char pass[] = "02025509";
+char serverAddress[] = "172.20.10.2";  // server address
+int port = 3001;
+WiFiClient           client;
+WiFiWebSocketClient  wsClient(client, serverAddress, port);
+
+
+JsonObject CreateJson( String CameraFeed){
+  DynamicJsonDocument jBuffer(1024);
+//  DynamicJsonBuffer jBuffer;
+  JsonObject root=jBuffer.createNestedObject();
+  root["CameraFeed"]=CameraFeed;
+  root["msgSender"]="Esp32";
+
+  return root;
+}
+
+
+// ================================================================
+// ===                      MOTOR SETUP                     ===
+// ================================================================
+
+
 
 void setup() {
   #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -90,24 +136,19 @@ void setup() {
     pinMode(dirPin, OUTPUT);
     pinMode(stepPin2, OUTPUT);
     pinMode(dirPin2, OUTPUT);
-    yaw=0.0;
-    roll=0.0;
-    pitch=0.0;
-    x=0.0;
     displacement=0.0;
     wheelc=2*PI*0.0325;
-    // initialize serial communication
-    // (115200 chosen because it is required for Teapot Demo output, but it's
-    // really up to you depending on your project)
+
     Serial.begin(115200);   //MIGHT NEED TO CHANGE TO 9600
+    WiFi.begin(ssid, pass);
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(1000);
+      Serial.println("Connecting to WiFi...");
+    }
+    Serial.println("Connected to WiFi");
+    delay(1000);
+    wsClient.begin();
     while (!Serial); // wait for Leonardo enumeration, others continue immediately
-
-    // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
-    // Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
-    // the baud timing being too misaligned with processor ticks. You must use
-    // 38400 or slower in these cases, or use some kind of external separate
-    // crystal solution for the UART timer.
-
     // initialize device
     Serial.println(F("Initializing I2C devices..."));
     mpu.initialize();
@@ -166,24 +207,36 @@ void setup() {
         Serial.println(F(")"));
     }
 
-    // configure LED for output
-    pinMode(LED_PIN, OUTPUT);
-  Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
-  //Serial2.begin(57600, SERIAL_8N1, RXD2, TXD2);
+    //FGPA GETTING DATA
+    Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
+    //Serial2.begin(57600, SERIAL_8N1, RXD2, TXD2);
   
 }
 
+
+String generateCoordinates() {
+  // Create a JSON document
+  StaticJsonDocument<64> jsonDocument;
+
+  // Generate random X and Y coordinates
+  int randomX = random(0, 901);
+  int randomY = random(0, 601);
+
+  // Add the coordinates to the JSON document
+  jsonDocument["x"] = randomX;
+  jsonDocument["y"] = randomY;
+
+  // Serialize the JSON document to a string
+  String coordinatesData;
+  serializeJson(jsonDocument, coordinatesData);
+
+  // Return the coordinates data string
+  return coordinatesData;
+}
+
+
+
 void loop() {
-  while (Serial2.available()) {
-    //Serial.println(Serial2.read(), HEX);
-    // Serial.println(Serial2.read(), HEX);
-    // Serial.println(Serial2.read(), HEX);
-    // Serial.println(Serial2.read(), HEX);
-    Serial2.readBytes(reading, 4);
-    fpga_r = reading[3]<<24 | reading[2]<<16 | reading[1]<<8 |reading[0];
-    //fpga_r = reading[0]<<24 | reading[1]<<16 | reading[2]<<8 |reading[3];
-    Serial.println(fpga_r,HEX);
-  }  
 
       // if programming failed, don't try to do anything
     if (!dmpReady) return;
@@ -206,7 +259,7 @@ void loop() {
             pitch=ypr[1];
             roll=ypr[2];
         #endif
-        //yaw, roll. pitch
+      
 
         #ifdef OUTPUT_READABLE_WORLDACCEL
             // display initial world-frame acceleration, adjusted to remove gravity
@@ -223,14 +276,187 @@ void loop() {
             Serial.print("\t");
             Serial.println(aaWorld.z);
         #endif
+
+// ================================================================
+// ===                      READ FROM CAMERA/FPGA                ===
+// ================================================================
+
+        if(Serial2.available()) {
+          Serial2.readBytes(reading, 4);
+          fpga_r = reading[3]<<24 | reading[2]<<16 | reading[1]<<8 |reading[0];
+          //fpga_r = reading[0]<<24 | reading[1]<<16 | reading[2]<<8 |reading[3];
+          Serial.println(fpga_r,HEX);
+        }  
+
+
+// ================================================================
+// ===                   DECISION MAKING FROM CAMERA            ===
+// ================================================================
+
+//TO-DO: DECODE FPGA
+//FLAGS FOR NODES ENABLED HERE
+
+// ================================================================
+// ===            GET POSITION FROM BEACONS AT A NODE           ===
+// ================================================================
+
+if (node){ //NODE FLAG FROM CAMERA - TO BE RECEIVED
+
+//TO-DO: TRIANGULATION !!!
+//SEND YAW ANGLE FOR EACH NODE PATH OPTIONS
+//GET FLAGS FOR BEACON_SPOTTED! FROM FPGA AND PAUSE ROTATION AT THAT POINT
+//READ ANGLE theta1, theta2 AT 1ST AND 2ND BEACON
+    
+    //store initial yaw angle
+    //keep going left - send streams of left until beacons flag high
+    //store new yaw angle (theta_1), positionb1[0], positionb1[1]
+    //store new angle (theta_2), positionb1[0], positionb1[1]
+
+    position[0]=((positionb1[1]-positionb2[1])+x2*tan(theta_2)-positionb1[0]*tan(theta_1))/(tan(theta_2)-tan(theta_1));
+    position[1] = ((positionb1[1]*tan(theta_2) - positionb2[1]*tan(theta_1)) - (positionb1[0]-positionb2[0])(tan(theta_1)*(tan(theta_2))))/(tan(theta_2) - tan(theta_1));
+    
+}
+// ================================================================
+// ===                   READ FROM SERVER                       ===
+// ================================================================
+
+//TO-DO: HOW??
+// 2nd time visiting node = server
+//1st time node decision = esp32
+
+
+// ================================================================
+// ===                      MOTION CODE                       ===
+// ================================================================
+
+      
+      //PIN IS LEFT AND PIN2 IS RIGHT MOTOR
+
+      if(command=='f'){   //TURN FORWARD BY 1 STEP
+            digitalWrite(dirPin, HIGH);
+            digitalWrite(dirPin2, LOW);
+            digitalWrite(stepPin, HIGH);
+            digitalWrite(stepPin2, HIGH);                   
+            delayMicroseconds(2000);                     
+            digitalWrite(stepPin, LOW);                 
+            digitalWrite(stepPin2, LOW);                   
+            delayMicroseconds(2000);
+            displacement=wheelc/200;
+            position[0]+=displacement*cos(yaw);
+            position[1]+=displacement*sin(yaw);   
+             
+      }
+      else if(command=='b'){  //TURN BACK BY 1 STEP
+          digitalWrite(dirPin, LOW);
+          digitalWrite(dirPin2, HIGH);
+          digitalWrite(stepPin, HIGH);
+          digitalWrite(stepPin2, HIGH);           
+          delayMicroseconds(2000);                     
+          digitalWrite(stepPin, LOW);                 
+          digitalWrite(stepPin2, LOW);                   
+          delayMicroseconds(2000); 
+          displacement=wheelc/200;
+          position[0]-=displacement*cos(yaw);
+          position[1]-=displacement*sin(yaw);          
+        
+      }
+       else if(command=='l'){   //TURN LEFT BY 1 STEP
+            digitalWrite(dirPin, LOW);
+            digitalWrite(dirPin2, LOW);
+            digitalWrite(stepPin, HIGH);
+            digitalWrite(stepPin2, HIGH);                  
+            delayMicroseconds(2000);                     
+            digitalWrite(stepPin, LOW);                 
+            digitalWrite(stepPin2, LOW);                   
+            delayMicroseconds(2000);      
+          
+        }
+        
+        else if(command=='r'){   //TURN RIGHT BY 1 STEP
+              digitalWrite(dirPin, HIGH);
+              digitalWrite(dirPin2, HIGH);
+              digitalWrite(stepPin, HIGH);
+              digitalWrite(stepPin2, HIGH);                  
+              delayMicroseconds(2000);                     
+              digitalWrite(stepPin, LOW);                 
+              digitalWrite(stepPin2, LOW);                   
+              delayMicroseconds(2000);
+              
+        }
+
+        else if(command=='s'){  //STOP
+              
+        }
+
+// ================================================================
+// ===               GET WHITE LED POSITION                      ===
+// ================================================================
+
+        //TO-DO: CALCULATE d0 AND d1 !!!
+
+        positionll[0]=position[0]+d0*cos(yaw)+(positionb1[0]-320)sin(yaw);
+        positionll[1]=position[1]+d0*sin(yaw)+(positionb1[0]-320)cos(yaw);
+        positionrl[0]=position[0]+d1*cos(yaw)+(positionb1[0]-320)sin(yaw);
+        positionrl[1]=position[1]+d1*sin(yaw)+(positionb1[0]-320)cos(yaw); 
+        
+// ================================================================
+// ===               SEND WHITE LED AND ROVER POSITION          ===
+// ================================================================
+              
+        if(wsClient.connected()){
+          
+          //ROVER POSITION
+          jsonDocument["x_r"] = position[0];
+          jsonDocument["y_r"] = position[1];
+          String coordinatesDatar;  // Serialize the JSON document to a string
+          serializeJson(jsonDocument, coordinatesDatar);
+  
+          //LEFT WHITE LED POSITION
+          jsonDocument["x_ll"] = positionll[0];
+          jsonDocument["y_ll"] = positionll[1];
+          String coordinatesDatall;  // Serialize the JSON document to a string
+          serializeJson(jsonDocument, coordinatesDatall); 
+          
+          //RIGHT WHITE LED POSITION         
+          jsonDocument["x_rl"] = positionrl[0];
+          jsonDocument["y_rl"] = positionrl[1];
+          String coordinatesDatarl;  // Serialize the JSON document to a string
+          serializeJson(jsonDocument, coordinatesDatarl);
+                    
+          Serial.print("Sending data ");
+          unsigned long start = millis();
+          wsClient.beginMessage(TYPE_TEXT);
+          wsClient.print(coordinatesDatar);
+          wsClient.print(coordinatesDatall);
+          wsClient.print(coordinatesDatarl);
+          wsClient.endMessage();
+          // check if a message is available to be received
+          int messageSize = wsClient.parseMessage();
+
+          unsigned long end = millis();
+          unsigned long rtt = end - start;
+
+          // Print the RTT
+          // Serial.print("RTT: ");
+          // Serial.print(rtt);
+          // Serial.println(" ms");
+          
+          if (messageSize > 0)
+          {
+            Serial.println("Received a message:");
+            Serial.println(wsClient.readString());
+          }
+        } 
+
     }
+
+      
 }
 
-//DECODE FPGA
+// ================================================================
+// ================================================================
+// ===                     TA-DA! THE END :)                   ===
+// ================================================================
+// ================================================================
 
-//CONVERT FPGA AND SERVER COMMANDS TO DELAY IN MICROSECONDS CODE (COMBINED NO PID)
-//ROTATE BOTH MOTORS TO TURN LEFT OR RIGHT SO POSITION STAYS THE SAME
-//GET POSITION FROM DEAD-RECKONING BETWEEN NODES
-//GET POSITION FROM BEACONS AT A NODE
-//SEND POS TO SERVER 
 
