@@ -77,19 +77,6 @@ unsigned long interval = 50;;
 unsigned long previousMillis = 0;
 unsigned long currentMillis = 0;
 
-// TUNE THESE BY TRIAL AND ERROR
-float Kp;
-float Ki;
-float Kd;
-
-// variables for PID controller
-float tpitch=0;
-float pepitch=0;
-float epitch=0;
-float ipitch=0;        //integral of roll and pitch
-float dpitch=0;        //derivative of roll and pitch
-float pid=100;           //motor speeds
-
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -113,8 +100,14 @@ void setup() {
     #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
         Fastwire::setup(400, true);
     #endif
-    
-
+    BLA::Matrix<6, 6> A_d={1, 0.0922600151152885, 0, 0, -0.00916245729359372, 0.000463725836507565, 0, 0.849653078000291, 0, 0, -0.177725984313866, 0.00587223490637719, 0, 0, 1, 0.0925496377079686, 0, 0, 0, 0, 0.854788506660701, 0, 0, 0, 0, 0, 0.0161490660142083, 0, 0, 0, 1.03089655650108, 0.0994242787165783, 0, 0.314345697068390, 0, 0, 0, 0.607645253205616, 0.999461986794241};
+    BLA::Matrix<6, 2> B_d={0.00386999244235575, 0.00386999244235575, 0.0751734609998545, 0.0751734609998545, 0.0232823821625982, -0.0232823821625982, 0.453785916685308, -0.453785916685308, -0.00807453300710413, -0.00807453300710413, -0.157172848534195, -0.157172848534195};
+    BLA::Matrix<2, 6> C_d={1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0};
+    BLA::Matrix<2, 6> K={-5.89561854850652, -13.2835976137713, 0.393874612977434, 0.33854205283429, -14.4569280300536, -8.67211173540422, -8.21393795538072, -17.1177514455303, -0.427339321361424, -0.371990906329615, -17.5029813691579, -10.7338112176612};
+    BLA::Matrix<1, 6> x_i={0 ,0, 0, 0, 0, 0};
+    BLA::Matrix<6, 6> I={1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1};
+    BLA::Matrix<1, 6> y_d={0.5, direction};
+    BLA::Matrix<2, 1> u={0,0};
 
     // Declare pins as output:
     pinMode(stepPin, OUTPUT);
@@ -246,46 +239,29 @@ void loop() {
             Serial.println(aaWorld.z);
         #endif
 
-
         currentMillis = millis();
-        Kp=0.5;
-        Ki=0;
-        Kd=0;
-        epitch = tpitch - pitch;
-        ipitch += epitch;
-        dpitch=mpu.getRotationZ();
-        pid = Kp * epitch + Ki * ipitch + Kd * dpitch;
-        
-    if (currentMillis - previousMillis >= interval) {
-        if(command=="f"){
-        m1.setSpeed(s1+pid);  // Acceleration in steps per second per second
-        m2.setSpeed(s2+pid);  // Acceleration in steps per second per second
-        s1=m1.speed();
-        s2=m2.speed();
-        //torque=inertia*acceleration
-        previousMillis = currentMillis;
-        displacement=(s1+s2)*interval/2;
-        velocity=(s1+s2)/2;
-        position[0]+=displacement*cos(roll);
-        position[1]+=displacement*sin(roll); 
-        
-        }
-        else if(command=="l"){
-        m1.setSpeed(s1+pid);  // Acceleration in steps per second per second
-        m2.setSpeed(s2+pid);  // Acceleration in steps per second per second
-        s1=m1.speed();
-        s2=m2.speed();
-        //torque=inertia*acceleration
-        previousMillis = currentMillis;
-        displacement=(s1+s2)*interval/2;
-        velocity=(s1+s2)/2;
-        position[0]+=displacement*cos(roll);
-        position[1]+=displacement*sin(roll); 
-        
-        }
-    }
 
-      
+    if (currentMillis - previousMillis >= interval) {
+        u=-K*xi+Invert(C_d*Invert(I-(A_d-B_d*K))*B_d)*yd; 
+        a1=u[0]/inertia;
+        a2=u[1]/inertia;
+        m1.setAcceleration(a1);  // Acceleration in steps per second per second
+        m2.setAcceleration(a2);  // Acceleration in steps per second per second
+        s1=m1.speed();
+        s2=m2.speed();
+        //torque=inertia*acceleration
+        previousMillis = currentMillis;
+        if(s1>0 && s2>0){
+            displacement=(s1+s2)*interval/2;
+            velocity=(s1+s2)/2;
+            position[0]+=displacement*cos(roll);
+            position[1]+=displacement*sin(roll); 
+        }
+        xi={displacement, velocity, roll, mpu.getRotationX(), pitch, mpu.getRotationY()}
+        }
+
+        m1.runSpeed();
+        m2.runSpeed();
         // long m1p = m1.currentPosition();
         // long m2p = m2.currentPosition();
         Serial.println("displacement: ");
@@ -298,4 +274,4 @@ void loop() {
         Serial.println(yaw*180/M_PI);
         }
     }
-}
+

@@ -4,7 +4,6 @@
 
 #include <AccelStepper.h>
 
-#include <BasicLinearAlgebra.h>
 
 #include "MPU6050_6Axis_MotionApps20.h"
 //#include "MPU6050.h" // not necessary if using MotionApps include file
@@ -72,23 +71,11 @@ float a1=0;
 float a2=0;
 float s1=0;
 float s2=0;
+float pid=100;
 float velocity=0;
 unsigned long interval = 50;;
 unsigned long previousMillis = 0;
 unsigned long currentMillis = 0;
-
-// TUNE THESE BY TRIAL AND ERROR
-float Kp;
-float Ki;
-float Kd;
-
-// variables for PID controller
-float tpitch=0;
-float pepitch=0;
-float epitch=0;
-float ipitch=0;        //integral of roll and pitch
-float dpitch=0;        //derivative of roll and pitch
-float pid=100;           //motor speeds
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -113,7 +100,6 @@ void setup() {
     #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
         Fastwire::setup(400, true);
     #endif
-    
 
 
     // Declare pins as output:
@@ -246,7 +232,6 @@ void loop() {
             Serial.println(aaWorld.z);
         #endif
 
-
         currentMillis = millis();
         Kp=0.5;
         Ki=0;
@@ -257,35 +242,23 @@ void loop() {
         pid = Kp * epitch + Ki * ipitch + Kd * dpitch;
         
     if (currentMillis - previousMillis >= interval) {
-        if(command=="f"){
-        m1.setSpeed(s1+pid);  // Acceleration in steps per second per second
-        m2.setSpeed(s2+pid);  // Acceleration in steps per second per second
+        m1.setAcceleration(pid);  // Acceleration in steps per second per second
+        m2.setAcceleration(pid);  // Acceleration in steps per second per second
         s1=m1.speed();
         s2=m2.speed();
         //torque=inertia*acceleration
         previousMillis = currentMillis;
-        displacement=(s1+s2)*interval/2;
-        velocity=(s1+s2)/2;
-        position[0]+=displacement*cos(roll);
-        position[1]+=displacement*sin(roll); 
-        
+        if(s1>0 && s2>0){
+            displacement=(s1+s2)*interval/2;
+            velocity=(s1+s2)/2;
+            position[0]+=displacement*cos(roll);
+            position[1]+=displacement*sin(roll); 
         }
-        else if(command=="l"){
-        m1.setSpeed(s1+pid);  // Acceleration in steps per second per second
-        m2.setSpeed(s2+pid);  // Acceleration in steps per second per second
-        s1=m1.speed();
-        s2=m2.speed();
-        //torque=inertia*acceleration
-        previousMillis = currentMillis;
-        displacement=(s1+s2)*interval/2;
-        velocity=(s1+s2)/2;
-        position[0]+=displacement*cos(roll);
-        position[1]+=displacement*sin(roll); 
-        
+        xi={displacement, velocity, roll, mpu.getRotationX(), pitch, mpu.getRotationY()}
         }
-    }
 
-      
+        m1.runSpeed();
+        m2.runSpeed();
         // long m1p = m1.currentPosition();
         // long m2p = m2.currentPosition();
         Serial.println("displacement: ");
@@ -298,4 +271,3 @@ void loop() {
         Serial.println(yaw*180/M_PI);
         }
     }
-}

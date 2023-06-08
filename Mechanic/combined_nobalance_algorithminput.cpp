@@ -2,10 +2,6 @@
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
 
-#include <AccelStepper.h>
-
-#include <BasicLinearAlgebra.h>
-
 #include "MPU6050_6Axis_MotionApps20.h"
 //#include "MPU6050.h" // not necessary if using MotionApps include file
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
@@ -23,11 +19,6 @@
 
 MPU6050 mpu;
 //MPU6050 mpu(0x69); // <-- use for AD0 high
-
-using namespace BLA;
-
-AccelStepper m1(AccelStepper::DRIVER, stepPin, dirPin); //motor left
-AccelStepper m2(AccelStepper::DRIVER, stepPin2, dirPin2);   //motor right
 
 
 #define OUTPUT_READABLE_YAWPITCHROLL
@@ -66,29 +57,7 @@ float x;
 float yaw;
 float roll;
 float pitch;
-float direction=M_PI/4;
-float inertia=1.4;
-float a1=0;
-float a2=0;
-float s1=0;
-float s2=0;
-float velocity=0;
-unsigned long interval = 50;;
-unsigned long previousMillis = 0;
-unsigned long currentMillis = 0;
-
-// TUNE THESE BY TRIAL AND ERROR
-float Kp;
-float Ki;
-float Kd;
-
-// variables for PID controller
-float tpitch=0;
-float pepitch=0;
-float epitch=0;
-float ipitch=0;        //integral of roll and pitch
-float dpitch=0;        //derivative of roll and pitch
-float pid=100;           //motor speeds
+float direction;
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -113,9 +82,7 @@ void setup() {
     #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
         Fastwire::setup(400, true);
     #endif
-    
-
-
+ 
     // Declare pins as output:
     pinMode(stepPin, OUTPUT);
     pinMode(dirPin, OUTPUT);
@@ -203,15 +170,11 @@ void setup() {
 // ================================================================
 
 void loop() {
-
     // if programming failed, don't try to do anything
     if (!dmpReady) return;
     // read a packet from FIFO
-    currentMillis = millis();
-
     if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
-        
-      
+
         #ifdef OUTPUT_READABLE_YAWPITCHROLL
             // display Euler angles in degrees
             mpu.dmpGetQuaternion(&q, fifoBuffer);
@@ -245,49 +208,80 @@ void loop() {
             Serial.print("\t");
             Serial.println(aaWorld.z);
         #endif
+    //do the logic for algorithm here and output direction
 
 
-        currentMillis = millis();
-        Kp=0.5;
-        Ki=0;
-        Kd=0;
-        epitch = tpitch - pitch;
-        ipitch += epitch;
-        dpitch=mpu.getRotationZ();
-        pid = Kp * epitch + Ki * ipitch + Kd * dpitch;
+      if(direction==0){
+          for (int i = 0; i <200; i++){
+            digitalWrite(dirPin, HIGH);
+            digitalWrite(dirPin2, LOW);
+            digitalWrite(stepPin, HIGH);
+            digitalWrite(stepPin2, HIGH);                   
+            delayMicroseconds(2000);                     
+            digitalWrite(stepPin, LOW);                 
+            digitalWrite(stepPin2, LOW);                   
+            delayMicroseconds(2000);
+            displacement=wheelc/200;
+            position[0]+=displacement*cos(yaw);
+            position[1]+=displacement*sin(yaw);   
+          }   
+          
+      }
+
+    //WE MIGHT NEED BACKWARD COMMAND IN CASE OF EMERGENCIES MAYBE
+    //   else if(){
+    //     for (int i = 0; i <200; i++){
+
+    //       digitalWrite(dirPin, LOW);
+    //       digitalWrite(dirPin2, HIGH);
+    //       digitalWrite(stepPin, HIGH);
+    //       digitalWrite(stepPin2, HIGH);           
+    //       delayMicroseconds(2000);                     
+    //       digitalWrite(stepPin, LOW);                 
+    //       digitalWrite(stepPin2, LOW);                   
+    //       delayMicroseconds(2000); 
+    //       displacement=wheelc/200;
+    //       position[0]-=displacement*cos(yaw);
+    //       position[1]-=displacement*sin(yaw);          
+    //     }
+    //   }
+        //ASSUME THAT PIN IS LEFT AND PIN2 IS CONNECTED TO RIGHT MOTOR
+        else if(direction<0){
+          for (int i = 0; i <200; i++){
+            digitalWrite(dirPin, HIGH);
+            digitalWrite(dirPin2, LOW);
+            digitalWrite(stepPin, LOW);
+            digitalWrite(stepPin2, HIGH);                  
+            delayMicroseconds(2000);                     
+            digitalWrite(stepPin, LOW);                 
+            digitalWrite(stepPin2, LOW);                   
+            delayMicroseconds(2000); 
+            if(0<yaw<90){
+                position[0]+=
+            }
+            // position[0]+=0.08*sin(direction);
+            // position[1]+=0.08(1-cos(direction));          
+          }
+        }
         
-    if (currentMillis - previousMillis >= interval) {
-        if(command=="f"){
-        m1.setSpeed(s1+pid);  // Acceleration in steps per second per second
-        m2.setSpeed(s2+pid);  // Acceleration in steps per second per second
-        s1=m1.speed();
-        s2=m2.speed();
-        //torque=inertia*acceleration
-        previousMillis = currentMillis;
-        displacement=(s1+s2)*interval/2;
-        velocity=(s1+s2)/2;
-        position[0]+=displacement*cos(roll);
-        position[1]+=displacement*sin(roll); 
+        else if(direction>0){
+            for (int i = 0; i <200; i++){
+              digitalWrite(dirPin, HIGH);
+              digitalWrite(dirPin2, LOW);
+              digitalWrite(stepPin, HIGH);
+              digitalWrite(stepPin2, LOW);                  
+              delayMicroseconds(2000);                     
+              digitalWrite(stepPin, LOW);                 
+              digitalWrite(stepPin2, LOW);                   
+              delayMicroseconds(2000);
+              position[0]+=0.08*sin(direction);
+              position[1]+=0.08(1-cos(direction));            
+            }
+        }
         
         }
-        else if(command=="l"){
-        m1.setSpeed(s1+pid);  // Acceleration in steps per second per second
-        m2.setSpeed(s2+pid);  // Acceleration in steps per second per second
-        s1=m1.speed();
-        s2=m2.speed();
-        //torque=inertia*acceleration
-        previousMillis = currentMillis;
-        displacement=(s1+s2)*interval/2;
-        velocity=(s1+s2)/2;
-        position[0]+=displacement*cos(roll);
-        position[1]+=displacement*sin(roll); 
-        
-        }
-    }
-
-      
-        // long m1p = m1.currentPosition();
-        // long m2p = m2.currentPosition();
+    
+        while (!Serial.available());                 // wait for data
         Serial.println("displacement: ");
         Serial.println(displacement);
         Serial.println("x: ");
@@ -296,6 +290,6 @@ void loop() {
         Serial.println(position[1]);
         Serial.println("yaw: ");
         Serial.println(yaw*180/M_PI);
-        }
+
     }
-}
+    

@@ -57,7 +57,7 @@ float x;
 float yaw;
 float roll;
 float pitch;
-
+float direction;
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -94,19 +94,14 @@ void setup() {
     x=0.0;
     displacement=0.0;
     wheelc=2*PI*0.0325; //radius of the wheels are 0.0325
+    direction=0;
     // initialize serial communication
     // (115200 chosen because it is required for Teapot Demo output, but it's
     // really up to you depending on your project)
-    Serial.begin(115200);   //MIGHT NEED TO CHANGE TO 9600
+    Serial.begin(115200);  
     while (!Serial); // wait for Leonardo enumeration, others continue immediately
 
-    // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
-    // Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
-    // the baud timing being too misaligned with processor ticks. You must use
-    // 38400 or slower in these cases, or use some kind of external separate
-    // crystal solution for the UART timer.
 
-    // initialize device
     Serial.println(F("Initializing I2C devices..."));
     mpu.initialize();
     pinMode(INTERRUPT_PIN, INPUT);
@@ -260,10 +255,8 @@ void loop() {
             digitalWrite(stepPin, LOW);                 
             digitalWrite(stepPin2, LOW);                   
             delayMicroseconds(2000); 
-            arc = 2 * M_PI * 0.16 * (90/200); //one wheel revolution is 90 degree turn, here we take only 1 step, 1 step=1/200 revolution
-            chord=2*0.16*sin(arc/(2*0.16));    // the distance between two wheels is 0.16 which should be equal to radius of rotational movement 
-            position[0]+=chord*cos(90/200);
-            position[1]+=chord*sin(90/200);          
+            position[0]+=0.08*sin(direction);
+            position[1]+=0.08(1-cos(direction));          
           }
         }
         
@@ -277,15 +270,8 @@ void loop() {
               digitalWrite(stepPin, LOW);                 
               digitalWrite(stepPin2, LOW);                   
               delayMicroseconds(2000);
-              arc = 2 * M_PI * 0.16 * (90/200);
-              chord=2*0.16*sin(arc/(2*0.16));
-              arc = 2 * M_PI * 0.16 * (90/200);
-              chord = 2 * 0.16 * sin(arc / (2 * 0.16)); 
-              rotationAngle = yaw + (arc / 2); 
-
-              rotationangle = yaw + (arc / 2); // Calculate the angle of rotation from the initial yaw
-              position[0]+=chord*cos(yaw);
-              position[1]+=chord*sin(yaw);          
+              position[0]+=0.08*sin(direction);
+              position[1]+=0.08(1-cos(direction));            
             }
         }
         
