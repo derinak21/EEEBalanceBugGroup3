@@ -6,6 +6,9 @@
 // ================================================================
 
 #include "I2Cdev.h"
+#include <unordered_map>
+#include <vector>
+
 
 #include "MPU6050_6Axis_MotionApps20.h"
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -52,10 +55,11 @@ uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\
 
 int stepcount=0;
 float position[2] = {0.0, 0.0};
-float positionrl[2] = {0.0, 0.0};
-float positionll[2] = {0.0, 0.0};
-float positionb1[2] = {0.0, 0.0};
-float positionb2[2] = {0.0, 0.0};
+float position_rl[2] = {0.0, 0.0};
+float position_ll[2] = {0.0, 0.0};
+float position_b1[2] = {0.0, 0.0};
+float position_b2[2] = {0.0, 0.0};
+float position_p; 
 float wheelc;   //CALCULATE WHEEL CIRCUMFERENCE AND ENTER IT HERE
 float displacement;
 float yaw;
@@ -68,6 +72,21 @@ float gradient2;
 
 float d0; //DEFINE THIS
 float d1; //DEFINE THIS
+
+float theta_1 = 0; 
+float theta_2 = 0; 
+bool  beacon_flag_1 = false; 
+bool beacon_flag_2 = false; 
+char command; 
+bool first_time_node = false; 
+int x, y;
+bool turn;
+int camera_command;
+int direction;
+bool check_node;
+bool nodeflag = false; 
+std::unordered_map<size_t, std::unordered_map<int, bool>> nodes;
+
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -214,28 +233,6 @@ void setup() {
 }
 
 
-String generateCoordinates() {
-  // Create a JSON document
-  StaticJsonDocument<64> jsonDocument;
-
-  // Generate random X and Y coordinates
-  int randomX = random(0, 901);
-  int randomY = random(0, 601);
-
-  // Add the coordinates to the JSON document
-  jsonDocument["x"] = randomX;
-  jsonDocument["y"] = randomY;
-
-  // Serialize the JSON document to a string
-  String coordinatesData;
-  serializeJson(jsonDocument, coordinatesData);
-
-  // Return the coordinates data string
-  return coordinatesData;
-}
-
-
-
 void loop() {
 
       // if programming failed, don't try to do anything
@@ -287,10 +284,16 @@ void loop() {
           //fpga_r = reading[0]<<24 | reading[1]<<16 | reading[2]<<8 |reading[3];
           Serial.println(fpga_r,HEX);
         }  
-        
-        #include <unordered_map>
-#include <vector>
 
+        if (!nodeflag){
+            command = camera_command;
+                //NEED TO CHANGE f AND s TO INTEGERS FROM CAMERA - ADD MAPPING FUNCTION
+        }
+
+// ================================================================
+// ===                      MARKING A NODE                      ===
+// ================================================================
+ 
 inline size_t key(int i,int j) {return (size_t) i << 32 | (unsigned int) j;}
 
 std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered_map<int, bool>> nodes){
@@ -310,6 +313,10 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
     return coord;
 }
 
+// ================================================================
+// ===           CHECK/ADD NODE + TRIANGULATION                 ===
+// ================================================================
+
 //to add a position as a new node and mark visited paths
 //return whether this is a new node
 //if it is, turn one round and add angles to the map
@@ -317,24 +324,19 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
 //     if (!is_node)
 // }
 
-int main(){
-    int x, y;
-    bool turn;
-    int camera_command;
-    int direction;
-    bool check_node;
-    std::unordered_map<size_t, std::unordered_map<int, bool>> nodes;
 
     if (check_node){
         if (is_node(x,y,nodes)[0] == 555){ // not a defined node
             turn = true;
-            int min = 360;
+            int min = 360; //check this
             int max = -180;
             bool is_path = false; //to indicate end of a path
-            //need to add turning function here
+
+            command = 'r';
+            
             if (camera_command == 'f'){
                 is_path = true;
-                if (direction < min){
+                if (direction < min){ //check this 
                     min = direction;
                 }
                 if (direction > max){
@@ -345,6 +347,7 @@ int main(){
                 nodes[key(x,y)][(min+max)/2] = false;
                 min = 360;
                 max = -180;
+                is_path = false; 
             }    
         }
         else{//is a defined node
@@ -353,51 +356,83 @@ int main(){
             int tmp_y = tmp[1];
             std::unordered_map<int,bool> angles;
             angles = nodes[key(tmp_x, tmp_y)];
+            i = 0; 
             for (auto it = angles.begin(); it != angles.end(); it++){
                 if (((it->first-direction)<185 & (it->first-direction)>175) | ((it->first-direction)>-185 & (it->first-direction)<-175)){
                     it->second = true;
                 }
+                i++; 
             }
+            nodeflag = true; 
         }
+        // TRIANGULATION STUFF BELOW
+            if(!first_time_node){ 
+                float initial_yaw=yaw; //store initial yaw angle
+                first_time_node = true; 
+            }
+                
+            if (beacon_flag_1){
+                theta_1 = yaw;
+            }
+
+            if (beacon_flag_2){ 
+                theta_2 = yaw;
+            }
+
+            if (initial_yaw - 2 < yaw < initial_yaw + 2){
+                command = 's'; 
+                first_time_node = false; 
+                position[0]=((position_b1[1]-position_b2[1])+position_b2[0]*tan(theta_2)-position_b1[0]*tan(theta_1))/(tan(theta_2)-tan(theta_1));
+                position[1] = ((position_b1[1]*tan(theta_2) - position_b2[1]*tan(theta_1)) - (position_b1[0]-position_b2[0])(tan(theta_1)*(tan(theta_2))))/(tan(theta_2) - tan(theta_1));
+                //NEED INITIAL POSITION OF BEACONS AT THE START FOR BEACON X AND Y VALUES
+            }
+            else{
+                command = 'r';
+            }
     }
     
-}
-
 
 // ================================================================
-// ===                   DECISION MAKING FROM CAMERA            ===
+// ===                      MOTION CODE                       ===
 // ================================================================
 
-//TO-DO: DECODE FPGA
-//FLAGS FOR NODES ENABLED HERE
+if check node
+    check light sensors{
+        if white on right and on left{
+            nodeflag = false; 
+        }
+        else{
+            nodeflag = true; 
+        }
+    }
+    if (!nodeflag){
+        if (command == 's'){
+            command = 'r';
+        }
 
-// ================================================================
-// ===            GET POSITION FROM BEACONS AT A NODE           ===
-// ================================================================
+    }
 
-if (node){ //NODE FLAG FROM CAMERA - TO BE RECEIVED
+    if (nodeflag){
+        if (i == 2){
+            choose the one that is not yaw+or-180
+        }
 
-//TO-DO: TRIANGULATION !!!
-//SEND YAW ANGLE FOR EACH NODE PATH OPTIONS
-//GET FLAGS FOR BEACON_SPOTTED! FROM FPGA AND PAUSE ROTATION AT THAT POINT
-//READ ANGLE theta1, theta2 AT 1ST AND 2ND BEACON
-    
-    //store initial yaw angle
-    //keep going left - send streams of left until beacons flag high
-    //store new yaw angle (theta_1), positionb1[0], positionb1[1]
-    //store new angle (theta_2), positionb1[0], positionb1[1]
+        if (i > 2){
+            choose target yaw as first value in map
+        }
 
-    position[0]=((positionb1[1]-positionb2[1])+x2*tan(theta_2)-positionb1[0]*tan(theta_1))/(tan(theta_2)-tan(theta_1));
-    position[1] = ((positionb1[1]*tan(theta_2) - positionb2[1]*tan(theta_1)) - (positionb1[0]-positionb2[0])(tan(theta_1)*(tan(theta_2))))/(tan(theta_2) - tan(theta_1));
-    
-}
-// ================================================================
-// ===                   READ FROM SERVER                       ===
-// ================================================================
+        coming back to a node - TBD
 
-//TO-DO: HOW??
-// 2nd time visiting node = server
-//1st time node decision = esp32
+    }
+
+
+
+
+
+
+
+
+
 
 
 // ================================================================
@@ -460,19 +495,26 @@ if (node){ //NODE FLAG FROM CAMERA - TO BE RECEIVED
         }
 
         else if(command=='s'){  //STOP
-              
+              digitalWrite(dirPin, HIGH);
+              digitalWrite(dirPin2, HIGH);
+              digitalWrite(stepPin, LOW);
+              digitalWrite(stepPin2, LOW);                  
+              delayMicroseconds(2000);                     
+              digitalWrite(stepPin, LOW);                 
+              digitalWrite(stepPin2, LOW);                   
+              delayMicroseconds(2000);
         }
 
 // ================================================================
-// ===               GET WHITE LED POSITION                      ===
+// ===               GET WHITE LED POSITION                      === 
 // ================================================================
 
         //TO-DO: CALCULATE d0 AND d1 !!!
 
-        positionll[0]=position[0]+d0*cos(yaw)+(positionb1[0]-320)sin(yaw);
-        positionll[1]=position[1]+d0*sin(yaw)+(positionb1[0]-320)cos(yaw);
-        positionrl[0]=position[0]+d1*cos(yaw)+(positionb1[0]-320)sin(yaw);
-        positionrl[1]=position[1]+d1*sin(yaw)+(positionb1[0]-320)cos(yaw); 
+        position_ll[0]=position[0]+d0*cos(yaw)+(position_p[0]-320)sin(yaw);
+        position_ll[1]=position[1]+d0*sin(yaw)+(position_p[0]-320)cos(yaw);
+        position_rl[0]=position[0]+d1*cos(yaw)+(position_p[0]-320)sin(yaw);
+        position_rl[1]=position[1]+d1*sin(yaw)+(position_p[0]-320)cos(yaw); 
         
 // ================================================================
 // ===               SEND WHITE LED AND ROVER POSITION          ===
@@ -487,14 +529,14 @@ if (node){ //NODE FLAG FROM CAMERA - TO BE RECEIVED
           serializeJson(jsonDocument, coordinatesDatar);
   
           //LEFT WHITE LED POSITION
-          jsonDocument["x_ll"] = positionll[0];
-          jsonDocument["y_ll"] = positionll[1];
+          jsonDocument["x_ll"] = position_ll[0];
+          jsonDocument["y_ll"] = position_ll[1];
           String coordinatesDatall;  // Serialize the JSON document to a string
           serializeJson(jsonDocument, coordinatesDatall); 
           
           //RIGHT WHITE LED POSITION         
-          jsonDocument["x_rl"] = positionrl[0];
-          jsonDocument["y_rl"] = positionrl[1];
+          jsonDocument["x_rl"] = position_rl[0];
+          jsonDocument["y_rl"] = position_rl[1];
           String coordinatesDatarl;  // Serialize the JSON document to a string
           serializeJson(jsonDocument, coordinatesDatarl);
                     
