@@ -7,7 +7,9 @@
 
 #include "I2Cdev.h"
 #include <unordered_map>
+#include <map>
 #include <vector>
+#include <NewPing.h>
 
 
 #include "MPU6050_6Axis_MotionApps20.h"
@@ -75,19 +77,33 @@ float d1; //DEFINE THIS
 
 float theta_1 = 0; 
 float theta_2 = 0; 
-bool  beacon_flag_1 = false; 
-bool beacon_flag_2 = false; 
+
+float de_init_yaw;
+float initial_yaw;
 char command; 
-bool first_time_node = false; 
 int x, y;
 bool turn;
 int camera_command;
 int direction;
-bool check_node;
-bool nodeflag = false; 
+char color;
+std::vector<char> initbeacons;
+std::map<char, std::pair<float, float>> beaconMap;
 std::unordered_map<size_t, std::unordered_map<int, bool>> nodes;
 
-
+// ================================================================
+// ===                          FLAGS                           ===
+// ================================================================
+bool beacon_flag_1 = false; 
+bool beacon_flag_2 = false; 
+bool check_node = false;
+bool nodeflag = false; 
+bool first_time_node = false; 
+bool initialisation=true;
+bool initialbeacon=true;
+bool beaconposition=true;
+bool beacon_flag_fpga = false; 
+bool de_flag=false;
+bool done_checking=false;
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -105,6 +121,23 @@ void dmpDataReady() {
 #define TXD2 17
 byte reading[4];
 unsigned int fpga_r;
+
+
+// ================================================================
+// ===        SETUP TO READ FROM ULTRASONIC SENSOR              ===
+// ================================================================
+
+//TO-DO: CHANGE THE PINS
+//!!!!!!!!!!!!!!!!!!!!
+#define TRIGGER_PIN  12  
+#define ECHO_PIN     11  
+#define TRIGGER_PIN_2  12  
+#define ECHO_PIN_2     11  
+#define MAX_DISTANCE 200 
+
+NewPing sonar1(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
+NewPing sonar2(TRIGGER_PIN_2, ECHO_PIN_2, MAX_DISTANCE);
+
 
 // ================================================================
 // ===                    SETUP FOR SERVER                     ===
@@ -285,10 +318,86 @@ void loop() {
           Serial.println(fpga_r,HEX);
         }  
 
-        if (!nodeflag){
+        if (!nodeflag && !initialisation){
             command = camera_command;
                 //NEED TO CHANGE f AND s TO INTEGERS FROM CAMERA - ADD MAPPING FUNCTION
         }
+
+        //need to decode beacon_flag_fpga from fpga_r
+
+// ================================================================
+// ===               GET POSITIONS OF BEACONS                   ===
+// ================================================================
+
+if(initialisation){
+
+    if(yaw=0 && initialbeacon){
+        initbeacons.push_back(color);
+        initialbeacon=false;
+        command="r";
+    }else if (yaw=90){
+        initbeacons.push_back(color);
+        command="r";
+
+    }else if (yaw=180){
+        initbeacons.push_back(color);
+        command="r";
+
+    }else if(yaw=0 && !initialbeacon){
+        initbeacons.push_back(color);
+        command="f";
+        initialisation=false;  
+
+    }else{
+        command = "r";
+    }
+
+}
+
+if(!initialisation && beaconposition){
+
+    if(initbeacons[0]="y" && initbeacons[1]="r" ){
+        beaconMap.insert(std::make_pair('y', std::make_pair(3.6, 0)));
+        beaconMap.insert(std::make_pair('b', std::make_pair(3.6, 2.4)));
+        beaconMap.insert(std::make_pair('r', std::make_pair(0, 2.4)));
+
+    }else if(initbeacons[0]="r" && initbeacons[1]="n" ){
+        beaconMap.insert(std::make_pair('y', std::make_pair(0, -3.6)));
+        beaconMap.insert(std::make_pair('b', std::make_pair(2.4, -3.6)));
+        beaconMap.insert(std::make_pair('r', std::make_pair(2.4,0)));
+
+    }else if(initbeacons[0]="n" && initbeacons[1]="n" ){
+        beaconMap.insert(std::make_pair('y', std::make_pair(0, 0)));
+        beaconMap.insert(std::make_pair('b', std::make_pair(0, -2.4)));
+        beaconMap.insert(std::make_pair('r', std::make_pair(3.6, -2.4)));
+
+    }else if(initbeacons[0]="bs"){
+        beaconMap.insert(std::make_pair('y', std::make_pair(0, 0)));
+        beaconMap.insert(std::make_pair('b', std::make_pair(2.4,0)));
+        beaconMap.insert(std::make_pair('r', std::make_pair(2.4, 3.6)));
+
+    }else if(initbeacons[0]="r" && initbeacons[1]="y" ){
+        beaconMap.insert(std::make_pair('y', std::make_pair(0,2.4)));
+        beaconMap.insert(std::make_pair('b', std::make_pair(0, 0)));
+        beaconMap.insert(std::make_pair('r', std::make_pair(3.6,0)));
+
+    }else if(initbeacons[0]="y" && initbeacons[1]="n" ){
+        beaconMap.insert(std::make_pair('y', std::make_pair(2.4, 0)));
+        beaconMap.insert(std::make_pair('b', std::make_pair(0, 0)));
+        beaconMap.insert(std::make_pair('r', std::make_pair(0, -3.6)));
+
+    }else if(initbeacons[0]="bl" && initbeacons[1]="n" ){
+        beaconMap.insert(std::make_pair('y', std::make_pair(3.6, -2.4)));
+        beaconMap.insert(std::make_pair('b', std::make_pair(3.6, 0)));
+        beaconMap.insert(std::make_pair('r', std::make_pair(0, 0)));
+
+    }else if(initbeacons[0]="n" && initbeacons[1]="bl"  ){
+        beaconMap.insert(std::make_pair('y', std::make_pair(2.46, 3.6)));
+        beaconMap.insert(std::make_pair('b', std::make_pair(0, 3.6)));
+        beaconMap.insert(std::make_pair('r', std::make_pair(0, 0)));
+    }  
+    beaconposition=false;
+}
 
 // ================================================================
 // ===                      MARKING A NODE                      ===
@@ -325,14 +434,22 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
 // }
 
 
-    if (check_node){
+    if (check_node && !deflag){
+        if(sonar1.ping_cm()<4 && sonar2.ping_cm()<4){   // TO-DO: MEASURE THE MAX DISTANCE FROM ROVER TO WHITE LEDS
+            nodeflag=false;
+        }
+        else{
+            nodeflag=true;
+        }
+    }
+    
+    if(nodeflag){
+
         if (is_node(x,y,nodes)[0] == 555){ // not a defined node
             turn = true;
             int min = 360; //check this
             int max = -180;
             bool is_path = false; //to indicate end of a path
-
-            command = 'r';
             
             if (camera_command == 'f'){
                 is_path = true;
@@ -363,24 +480,41 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
                 }
                 i++; 
             }
-            nodeflag = true; 
+            
         }
+    
+// ================================================================
+// ===                      TRIANGULATION                       ===
+// ================================================================
+           if(beacon_flag_fpga && !beacon_flag_1){
+                beacon_flag_1=true;
+           }
+           else if(beacon_flag_fpga && beacon_flag_1 ){
+                beacon_flag_2=true;
+                beacon_flag_1=false;
+           }                          
+
         // TRIANGULATION STUFF BELOW
             if(!first_time_node){ 
-                float initial_yaw=yaw; //store initial yaw angle
+                initial_yaw=yaw; //store initial yaw angle
                 first_time_node = true; 
             }
-                
+            
             if (beacon_flag_1){
+                position_b1[0] = beaconMap[color].first;
+                position_b1[1] = beaconMap[color].second;
                 theta_1 = yaw;
             }
 
-            if (beacon_flag_2){ 
+            else if (beacon_flag_2){ 
+                position_b2[0] = beaconMap[color].first;
+                position_b2[1] = beaconMap[color].second;
                 theta_2 = yaw;
+                beacon_flag_2=false;
             }
 
             if (initial_yaw - 2 < yaw < initial_yaw + 2){
-                command = 's'; 
+                done_checking=true;
                 first_time_node = false; 
                 position[0]=((position_b1[1]-position_b2[1])+position_b2[0]*tan(theta_2)-position_b1[0]*tan(theta_1))/(tan(theta_2)-tan(theta_1));
                 position[1] = ((position_b1[1]*tan(theta_2) - position_b2[1]*tan(theta_1)) - (position_b1[0]-position_b2[0])(tan(theta_1)*(tan(theta_2))))/(tan(theta_2) - tan(theta_1));
@@ -391,47 +525,44 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
             }
     }
     
-
 // ================================================================
-// ===                      MOTION CODE                       ===
+// ===                 NAVIGATION ALGORITHM                     ===
 // ================================================================
 
-if check node
-    check light sensors{
-        if white on right and on left{
-            nodeflag = false; 
+if(nodeflag&&done_checking){
+    
+    if (i==2){
+        for (auto it = angles.begin(); it != angles.end(); it++){
+            if ( |it->first-yaw|!=180 ){
+                target_yaw=it->first;
+            }
         }
+    }
+    
+    if (i > 2){
+        // TO-DO: if()
+
         else{
-            nodeflag = true; 
+            target_yaw=angles[1];      
+
         }
+        }
+
+    // TO-DO: coming back to a node - TBD
+}
+
+
+else{ //DEAD-END
+    if (command == 's' ){
+        de_flag =true; 
+        de_init_yaw=yaw;  
     }
-    if (!nodeflag){
-        if (command == 's'){
-            command = 'r';
+    command="r";
+
+    if(|yaw-de_init_yaw|==180){
+            command="f";
         }
-
-    }
-
-    if (nodeflag){
-        if (i == 2){
-            choose the one that is not yaw+or-180
-        }
-
-        if (i > 2){
-            choose target yaw as first value in map
-        }
-
-        coming back to a node - TBD
-
-    }
-
-
-
-
-
-
-
-
+}
 
 
 
