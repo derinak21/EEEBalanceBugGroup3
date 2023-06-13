@@ -30,18 +30,6 @@ AccelStepper m1(AccelStepper::DRIVER, stepPin, dirPin); //motor left
 AccelStepper m2(AccelStepper::DRIVER, stepPin2, dirPin2);   //motor right
 
 
-float direction=M_PI/4;
-
-BLA::Matrix<6, 6> A_d={1, 0.0922600151152885, 0, 0, -0.00916245729359372, 0.000463725836507565, 0, 0.849653078000291, 0, 0, -0.177725984313866, 0.00587223490637719, 0, 0, 1, 0.0925496377079686, 0, 0, 0, 0, 0.854788506660701, 0, 0, 0, 0, 0, 0.0161490660142083, 0, 0, 0, 1.03089655650108, 0.0994242787165783, 0, 0.314345697068390, 0, 0, 0, 0.607645253205616, 0.999461986794241};
-BLA::Matrix<6, 2> B_d={0.00386999244235575, 0.00386999244235575, 0.0751734609998545, 0.0751734609998545, 0.0232823821625982, -0.0232823821625982, 0.453785916685308, -0.453785916685308, -0.00807453300710413, -0.00807453300710413, -0.157172848534195, -0.157172848534195};
-BLA::Matrix<2, 6> C_d={1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0};
-BLA::Matrix<2, 6> K={-5.89561854850652, -13.2835976137713, 0.393874612977434, 0.33854205283429, -14.4569280300536, -8.67211173540422, -8.21393795538072, -17.1177514455303, -0.427339321361424, -0.371990906329615, -17.5029813691579, -10.7338112176612};
-BLA::Matrix<1, 6> x_i={0 ,0, 0, 0, 0, 0};
-BLA::Matrix<6, 6> I={1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1};
-BLA::Matrix<1, 6> y_d={0.5, direction};
-BLA::Matrix<2, 1> u={0,0};
-
-    
 #define OUTPUT_READABLE_YAWPITCHROLL
 
 #define INTERRUPT_PIN  2 // use pin 2 on Arduino Uno & most boards
@@ -78,6 +66,7 @@ float x;
 float yaw;
 float roll;
 float pitch;
+float direction=M_PI/4;
 float inertia=1.4;
 float a1=0;
 float a2=0;
@@ -87,7 +76,20 @@ float velocity=0;
 unsigned long interval = 50;;
 unsigned long previousMillis = 0;
 unsigned long currentMillis = 0;
-int i=0 ; 
+
+// TUNE THESE BY TRIAL AND ERROR
+float Kp;
+float Ki;
+float Kd;
+
+// variables for PID controller
+float tpitch=0;
+float pepitch=0;
+float epitch=0;
+float ipitch=0;        //integral of roll and pitch
+float dpitch=0;        //derivative of roll and pitch
+float pid=100;           //motor speeds
+
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -111,6 +113,7 @@ void setup() {
     #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
         Fastwire::setup(400, true);
     #endif
+    
 
 
     // Declare pins as output:
@@ -204,6 +207,7 @@ void loop() {
     // if programming failed, don't try to do anything
     if (!dmpReady) return;
     // read a packet from FIFO
+    currentMillis = millis();
 
     if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
         
@@ -241,46 +245,53 @@ void loop() {
             Serial.print("\t");
             Serial.println(aaWorld.z);
         #endif
-    i++;
-        currentMillis = millis();
-    if(i<100000){
-        direction=0;
-    }
-    else if(100000<i<150000){
-        direction+=10;
-    }
-    else if(150000<i<200000){
-        direction-=10;
-    }
-    
-    if (currentMillis - previousMillis >= interval) {
-        u=-K*x+Invert((C_d*Invert(I-(A_d-(B_d*K))*B_d)))*y_d; 
-        a1=u[0]/inertia;
-        a2=u[1]/inertia;
-        m1.setAcceleration(a1);  // Acceleration in steps per second per second
-        m2.setAcceleration(a2);  // Acceleration in steps per second per second
-        s1=m1.speed();
-        s2=m2.speed();
-        //torque=inertia*acceleration
-        previousMillis = currentMillis;
-        if(s1>0 && s2>0){
-            displacement=(s1+s2)*interval/2;
-            velocity=(s1+s2)/2;
-            position[0]+=displacement*cos(roll);
-            position[1]+=displacement*sin(roll); 
-        }
-        x={0.2, velocity, roll, mpu.getRotationX(), pitch, mpu.getRotationY()}
-        }
 
+
+// ================================================================
+// ===                          YAW                             ===
+// ================================================================
+        
+        K_p_y=0.5;
+        K_i_y=0;
+        K_d_y=0;
+        eyaw = tyaw - yaw;
+        iyaw += eyaw;
+        dpitch=mpu.getRotationZ();
+        pid_y = Kp * eyaw + Ki * iyaw + Kd * dyaw;
+
+// ================================================================
+// ===                          DISTANCE                        ===
+// ================================================================
+
+        K_p_d=0.5;
+        K_i_d=0;
+        K_d_d=0;
+        edistance = tpitch - pitch;
+        ipitch += epitch;
+        dpitch=mpu.getRotationZ();
+        pid_d = Kp * epitch + Ki * ipitch + Kd * dpitch;
+
+
+// ================================================================
+// ===                        BALANCING                         ===
+// ================================================================
+
+        K_p_p=0.5;
+        K_i_p=0;
+        K_d_p=0;
+        epitch = tpitch - pitch + pid_d;
+        ipitch += epitch;
+        dpitch=mpu.getRotationZ();
+        pid_p = Kp * epitch + Ki * ipitch + Kd * dpitch;
+         
+        
+        m1.setSpeed(pid_p-pid_y);
+        m2.setSpeed(pid_p+pid_y);
         m1.runSpeed();
         m2.runSpeed();
-        Serial.println("displacement: ");
-        Serial.println(displacement);
-        Serial.println("x: ");
-        Serial.println(position[0]);
-        Serial.println("y: ");
-        Serial.println(position[1]);
-        Serial.println("yaw: ");
-        Serial.println(yaw*180/M_PI);
+   
+// SOURCE: http://er2c.pens.ac.id/pub/ies2015-movcascadedpid.pdf
+      
+   
         }
     }

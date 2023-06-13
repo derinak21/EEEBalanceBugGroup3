@@ -4,7 +4,6 @@
 
 #include <AccelStepper.h>
 
-#include <BasicLinearAlgebra.h>
 
 #include "MPU6050_6Axis_MotionApps20.h"
 //#include "MPU6050.h" // not necessary if using MotionApps include file
@@ -24,7 +23,6 @@
 MPU6050 mpu;
 //MPU6050 mpu(0x69); // <-- use for AD0 high
 
-using namespace BLA;
 
 AccelStepper m1(AccelStepper::DRIVER, stepPin, dirPin); //motor left
 AccelStepper m2(AccelStepper::DRIVER, stepPin2, dirPin2);   //motor right
@@ -68,28 +66,24 @@ float roll;
 float pitch;
 float direction=M_PI/4;
 float inertia=1.4;
-float a1=0;
-float a2=0;
 float s1=0;
 float s2=0;
 float velocity=0;
-unsigned long interval = 50;;
+unsigned long interval = 1000;
 unsigned long previousMillis = 0;
 unsigned long currentMillis = 0;
-
 // TUNE THESE BY TRIAL AND ERROR
-float Kp;
-float Ki;
-float Kd;
-
+float Kp=300;
+float Ki=0;
+float Kd=0;
+float i=0;
 // variables for PID controller
 float tpitch=0;
 float pepitch=0;
 float epitch=0;
 float ipitch=0;        //integral of roll and pitch
 float dpitch=0;        //derivative of roll and pitch
-float pid=100;           //motor speeds
-
+float pid=0;           //motor speeds
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -113,7 +107,6 @@ void setup() {
     #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
         Fastwire::setup(400, true);
     #endif
-    
 
 
     // Declare pins as output:
@@ -158,7 +151,10 @@ void setup() {
     mpu.setYGyroOffset(76);
     mpu.setZGyroOffset(-85);
     mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
-
+    m1.setMaxSpeed(2000);
+    m2.setMaxSpeed(2000);
+    m1.setAcceleration(1000);
+    m2.setAcceleration(1000);
     // make sure it worked (returns 0 if so)
     if (devStatus == 0) {
         // Calibration Time: generate offsets and calibrate our MPU6050
@@ -209,16 +205,16 @@ void loop() {
     // read a packet from FIFO
     currentMillis = millis();
 
-    if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
-        
-      
+    if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet
+       
+     
         #ifdef OUTPUT_READABLE_YAWPITCHROLL
             // display Euler angles in degrees
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
             Serial.print("ypr\t");
-            
+           
             Serial.print(ypr[0] * 180/M_PI);
             Serial.print("\t");
             Serial.print(ypr[1] * 180/M_PI);
@@ -245,47 +241,29 @@ void loop() {
             Serial.print("\t");
             Serial.println(aaWorld.z);
         #endif
-
-
-        currentMillis = millis();
-        Kp=0.5;
+     
+//        currentMillis = millis();
+        Kp=8000;
         Ki=0;
         Kd=0;
         epitch = tpitch - pitch;
         ipitch += epitch;
         dpitch=mpu.getRotationZ();
         pid = Kp * epitch + Ki * ipitch + Kd * dpitch;
-        
-    if (currentMillis - previousMillis >= interval) {
-        if(command=="f"){
-        m1.setSpeed(s1+pid);  // Acceleration in steps per second per second
-        m2.setSpeed(s2+pid);  // Acceleration in steps per second per second
-        s1=m1.speed();
-        s2=m2.speed();
+        m1.setSpeed(-pid);
+        m2.setSpeed(pid);
+        m1.runSpeed();  // Acceleration in steps per second per second
+        m2.runSpeed();  // Acceleration in steps per second per second
+   
         //torque=inertia*acceleration
-        previousMillis = currentMillis;
-        displacement=(s1+s2)*interval/2;
-        velocity=(s1+s2)/2;
-        position[0]+=displacement*cos(roll);
-        position[1]+=displacement*sin(roll); 
-        
-        }
-        else if(command=="l"){
-        m1.setSpeed(s1+pid);  // Acceleration in steps per second per second
-        m2.setSpeed(s2+pid);  // Acceleration in steps per second per second
-        s1=m1.speed();
-        s2=m2.speed();
-        //torque=inertia*acceleration
-        previousMillis = currentMillis;
-        displacement=(s1+s2)*interval/2;
-        velocity=(s1+s2)/2;
-        position[0]+=displacement*cos(roll);
-        position[1]+=displacement*sin(roll); 
-        
-        }
-    }
+//        if(s1>0){
+//            displacement=(s1+s1)*interval/2;
+//            velocity=(s1+s1)/2;
+//            position[0]+=displacement*cos(roll);
+//            position[1]+=displacement*sin(roll);
+//        }
+       
 
-      
         // long m1p = m1.currentPosition();
         // long m2p = m2.currentPosition();
         Serial.println("displacement: ");
@@ -296,6 +274,6 @@ void loop() {
         Serial.println(position[1]);
         Serial.println("yaw: ");
         Serial.println(yaw*180/M_PI);
-        }
+       
     }
 }
