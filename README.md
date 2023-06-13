@@ -1,1 +1,4 @@
 # EEEBalanceBugGroup3
+PIN Connections:
+MPU: SDA-4, SCL3, VCC-5V, GND-GND
+Motors: DIR 14-10, STEP 4-11, DIR2 15- 12, STEP 23-2

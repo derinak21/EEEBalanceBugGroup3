@@ -10,6 +10,7 @@
 #include <map>
 #include <vector>
 #include <NewPing.h>
+#include <cstdlib>
 
 
 #include "MPU6050_6Axis_MotionApps20.h"
@@ -121,6 +122,7 @@ void dmpDataReady() {
 #define TXD2 17
 byte reading[4];
 unsigned int fpga_r;
+inline size_t key(int i,int j) {return (size_t) i << 32 | (unsigned int) j;}
 
 
 // ================================================================
@@ -266,6 +268,9 @@ void setup() {
 }
 
 
+std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered_map<int, bool>> nodes);
+
+
 void loop() {
 
       // if programming failed, don't try to do anything
@@ -399,28 +404,6 @@ if(!initialisation && beaconposition){
     beaconposition=false;
 }
 
-// ================================================================
-// ===                      MARKING A NODE                      ===
-// ================================================================
- 
-inline size_t key(int i,int j) {return (size_t) i << 32 | (unsigned int) j;}
-
-std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered_map<int, bool>> nodes){
-    std::unordered_map<size_t, std::unordered_map<int, bool>>::iterator it;
-    std::vector<int> coord(2,555);
-    for (it = nodes.begin(); it!=nodes.end(); it++){
-        int tmp_x = it->first>>32;
-        int tmp_y = ((it->first)<<32)>>32;
-        int x_diff = tmp_x-x;
-        int y_diff = tmp_y-y;
-        if ((x_diff>-20) & (x_diff<20) & (y_diff>-20) & (x_diff<20)){
-            coord[0] = tmp_x;
-            coord[1] = tmp_y;
-            return coord;
-        }
-    }
-    return coord;
-}
 
 // ================================================================
 // ===           CHECK/ADD NODE + TRIANGULATION                 ===
@@ -428,20 +411,17 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
 
 //to add a position as a new node and mark visited paths
 //return whether this is a new node
-//if it is, turn one round and add angles to the map
-// bool edit_node(int x, int y, std::unordered_map<size_t, std::unordered_map<int, bool>> &nodes ){
-//     if (!is_node)
-// }
 
 
     if (check_node && !deflag){
-        if(sonar1.ping_cm()<4 && sonar2.ping_cm()<4){   // TO-DO: MEASURE THE MAX DISTANCE FROM ROVER TO WHITE LEDS
+        if(sonar1.ping_cm()<15 && sonar2.ping_cm()<15){   // TO-DO: MEASURE THE MAX DISTANCE FROM ROVER TO WHITE LEDS
             nodeflag=false;
         }
         else{
             nodeflag=true;
         }
     }
+    //TO-DO: REMOVE CHECK NODE AND ONLY USE NODE FLAGS FROM ULTRASONIC SENSORS
     
     if(nodeflag){
 
@@ -473,12 +453,10 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
             int tmp_y = tmp[1];
             std::unordered_map<int,bool> angles;
             angles = nodes[key(tmp_x, tmp_y)];
-            i = 0; 
             for (auto it = angles.begin(); it != angles.end(); it++){
                 if (((it->first-direction)<185 & (it->first-direction)>175) | ((it->first-direction)>-185 & (it->first-direction)<-175)){
                     it->second = true;
-                }
-                i++; 
+                }     
             }
             
         }
@@ -486,6 +464,7 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
 // ================================================================
 // ===                      TRIANGULATION                       ===
 // ================================================================
+
            if(beacon_flag_fpga && !beacon_flag_1){
                 beacon_flag_1=true;
            }
@@ -530,23 +509,27 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
 // ================================================================
 
 if(nodeflag&&done_checking){
-    
-    if (i==2){
-        for (auto it = angles.begin(); it != angles.end(); it++){
-            if ( |it->first-yaw|!=180 ){
+    std::vector<int> tmp = is_node(x,y,nodes);
+    int tmp_x = tmp[0];
+    int tmp_y = tmp[1];
+    std::unordered_map<int,bool> angles;
+    angles = nodes[key(tmp_x, tmp_y)];
+    float tmp_yaw = angles.begin()->first;
+    for (auto it = angles.begin(); it != angles.end(); it++){
+        if (angles.size()==2){
+            if ( abs(it->first-yaw)!=180 ){
                 target_yaw=it->first;
+                break;
+        }
+        }   
+        else if(angles.size() > 2){    
+            if (abs(it->first-yaw)==180){
+                target_yaw = tmp_yaw;
+                break;
             }
         }
+        tmp_yaw = it->first;
     }
-    
-    if (i > 2){
-        // TO-DO: if()
-
-        else{
-            target_yaw=angles[1];      
-
-        }
-        }
 
     // TO-DO: coming back to a node - TBD
 }
@@ -559,7 +542,7 @@ else{ //DEAD-END
     }
     command="r";
 
-    if(|yaw-de_init_yaw|==180){
+    if(|yaw-de_init_yaw|==180){         // ADD ERROR STUFF
             command="f";
         }
 }
@@ -700,6 +683,32 @@ else{ //DEAD-END
 
       
 }
+
+
+
+// ================================================================
+// ===                      MARKING A NODE                      ===
+// ================================================================
+ 
+
+std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered_map<int, bool>> nodes){
+    std::unordered_map<size_t, std::unordered_map<int, bool>>::iterator it;
+    std::vector<int> coord(2,555);
+    for (it = nodes.begin(); it!=nodes.end(); it++){
+        int tmp_x = it->first>>32;
+        int tmp_y = ((it->first)<<32)>>32;
+        int x_diff = tmp_x-x;
+        int y_diff = tmp_y-y;
+        if ((x_diff>-20) & (x_diff<20) & (y_diff>-20) & (x_diff<20)){
+            coord[0] = tmp_x;
+            coord[1] = tmp_y;
+            return coord;
+        }
+    }
+    return coord;
+}
+
+
 
 // ================================================================
 // ================================================================
