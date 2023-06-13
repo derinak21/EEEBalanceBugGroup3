@@ -72,6 +72,8 @@ bool node;
 bool nodeoptions;
 float gradient1;
 float gradient2;
+float min_angle = 360;
+float max_angle = -360;
 
 float d0 = 0.58; //DEFINE THIS
 //float d1; //DEFINE THIS
@@ -82,7 +84,7 @@ float theta_2 = 0;
 float de_init_yaw;
 float initial_yaw;
 char command; 
-int x, y;
+float x, y;
 bool turn;
 int camera_command;
 int direction;
@@ -105,6 +107,7 @@ bool beaconposition=true;
 bool beacon_flag_fpga = false; 
 bool de_flag=false;
 bool done_checking=false;
+bool is_path = false;
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -316,17 +319,33 @@ void loop() {
 // ===                      READ FROM CAMERA/FPGA                ===
 // ================================================================
 
-        if(Serial2.available()) {
-          Serial2.readBytes(reading, 4);
-          fpga_r = reading[3]<<24 | reading[2]<<16 | reading[1]<<8 |reading[0];
-          //fpga_r = reading[0]<<24 | reading[1]<<16 | reading[2]<<8 |reading[3];
-          Serial.println(fpga_r,HEX);
-        }  
-
-        if (!nodeflag && !initialisation){
-            command = camera_command;
-                //NEED TO CHANGE f AND s TO INTEGERS FROM CAMERA - ADD MAPPING FUNCTION
+    //for mapping
+    position_p1 = 1000;
+    position_p2 = 1000;
+    int count_reading = 0;
+    int count_coordinates = 0;
+//& (count_reading != 14)
+    while(Serial2.available() & (count_reading != 14)) {
+        Serial.print("fpga");
+        reading = Serial2.read();  
+        Serial.println(reading,HEX);
+        if (reading > 127) {
+            if (count_coordinates == 0){
+                position_p1 = reading - 128;
+                count_coordinates += 1;
+            }
+            else if (count_coordinates == 1){
+                position_p2 = reading - 128;
+                break;
+            }
         }
+        count_reading += 1;
+    }  
+
+        // if (!nodeflag && !initialisation){
+        //     command = camera_command;
+        //         //NEED TO CHANGE f AND s TO INTEGERS FROM CAMERA - ADD MAPPING FUNCTION
+        // }
 
         //need to decode beacon_flag_fpga from fpga_r
 
