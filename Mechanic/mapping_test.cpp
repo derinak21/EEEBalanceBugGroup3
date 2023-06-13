@@ -339,68 +339,148 @@ void loop() {
       
       //PIN IS LEFT AND PIN2 IS RIGHT MOTOR
 
-    if(command=='f'){   //TURN FORWARD BY 1 STEP
-        digitalWrite(dirPin, HIGH);
-        digitalWrite(dirPin2, LOW);
-        digitalWrite(stepPin, HIGH);
-        digitalWrite(stepPin2, HIGH);                   
-        delayMicroseconds(2000);                     
-        digitalWrite(stepPin, LOW);                 
-        digitalWrite(stepPin2, LOW);                   
-        delayMicroseconds(2000);
-        displacement=wheelc/200;
-        position[0]+=displacement*cos(yaw);
-        position[1]+=displacement*sin(yaw);   
+    // if(command=='f'){   //TURN FORWARD BY 1 STEP
+    //     digitalWrite(dirPin, HIGH);
+    //     digitalWrite(dirPin2, LOW);
+    //     digitalWrite(stepPin, HIGH);
+    //     digitalWrite(stepPin2, HIGH);                   
+    //     delayMicroseconds(2000);                     
+    //     digitalWrite(stepPin, LOW);                 
+    //     digitalWrite(stepPin2, LOW);                   
+    //     delayMicroseconds(2000);
+    //     displacement=wheelc/200;
+    //     position[0]+=displacement*cos(yaw);
+    //     position[1]+=displacement*sin(yaw);   
             
-    }
-    else if(command=='b'){  //TURN BACK BY 1 STEP
-        digitalWrite(dirPin, LOW);
-        digitalWrite(dirPin2, HIGH);
-        digitalWrite(stepPin, HIGH);
-        digitalWrite(stepPin2, HIGH);           
-        delayMicroseconds(2000);                     
-        digitalWrite(stepPin, LOW);                 
-        digitalWrite(stepPin2, LOW);                   
-        delayMicroseconds(2000); 
-        displacement=wheelc/200;
-        position[0]-=displacement*cos(yaw);
-        position[1]-=displacement*sin(yaw);          
+    // }
+    // else if(command=='b'){  //TURN BACK BY 1 STEP
+    //     digitalWrite(dirPin, LOW);
+    //     digitalWrite(dirPin2, HIGH);
+    //     digitalWrite(stepPin, HIGH);
+    //     digitalWrite(stepPin2, HIGH);           
+    //     delayMicroseconds(2000);                     
+    //     digitalWrite(stepPin, LOW);                 
+    //     digitalWrite(stepPin2, LOW);                   
+    //     delayMicroseconds(2000); 
+    //     displacement=wheelc/200;
+    //     position[0]-=displacement*cos(yaw);
+    //     position[1]-=displacement*sin(yaw);          
     
-    }
-    else if(command=='l'){   //TURN LEFT BY 1 STEP
-        digitalWrite(dirPin, LOW);
-        digitalWrite(dirPin2, LOW);
-        digitalWrite(stepPin, HIGH);
-        digitalWrite(stepPin2, HIGH);                  
-        delayMicroseconds(2000);                     
-        digitalWrite(stepPin, LOW);                 
-        digitalWrite(stepPin2, LOW);                   
-        delayMicroseconds(2000);      
+    // }
+    // else if(command=='l'){   //TURN LEFT BY 1 STEP
+    //     digitalWrite(dirPin, LOW);
+    //     digitalWrite(dirPin2, LOW);
+    //     digitalWrite(stepPin, HIGH);
+    //     digitalWrite(stepPin2, HIGH);                  
+    //     delayMicroseconds(2000);                     
+    //     digitalWrite(stepPin, LOW);                 
+    //     digitalWrite(stepPin2, LOW);                   
+    //     delayMicroseconds(2000);      
         
-    }
+    // }
     
-    else if(command=='r'){   //TURN RIGHT BY 1 STEP
+    // else if(command=='r'){   //TURN RIGHT BY 1 STEP
+    //         digitalWrite(dirPin, HIGH);
+    //         digitalWrite(dirPin2, HIGH);
+    //         digitalWrite(stepPin, HIGH);
+    //         digitalWrite(stepPin2, HIGH);                  
+    //         delayMicroseconds(2000);                     
+    //         digitalWrite(stepPin, LOW);                 
+    //         digitalWrite(stepPin2, LOW);                   
+    //         delayMicroseconds(2000);
+            
+    // }
+
+    // else if(command=='s'){  //STOP
+    //         digitalWrite(dirPin, HIGH);
+    //         digitalWrite(dirPin2, HIGH);
+    //         digitalWrite(stepPin, LOW);
+    //         digitalWrite(stepPin2, LOW);                  
+    //         delayMicroseconds(2000);                     
+    //         digitalWrite(stepPin, LOW);                 
+    //         digitalWrite(stepPin2, LOW);                   
+    //         delayMicroseconds(2000);
+    // }
+
+    //keyboard control
+        
+    if (Serial.available()){ // empty buffer
+      char command = Serial.read();
+      
+      if(command=='w'){
+          for (int i = 0; i <200; i++){
             digitalWrite(dirPin, HIGH);
-            digitalWrite(dirPin2, HIGH);
+            digitalWrite(dirPin2, LOW);
             digitalWrite(stepPin, HIGH);
+            digitalWrite(stepPin2, HIGH);                   
+            delayMicroseconds(2000);                     
+            digitalWrite(stepPin, LOW);                 
+            digitalWrite(stepPin2, LOW);                   
+            delayMicroseconds(2000);
+            stepcount++;
+            turn=0;     
+            back=0; 
+            displacement=wheelc/200;
+            position[0]+=displacement*cos(yaw);
+            position[1]+=displacement*sin(yaw);   
+          }   
+          
+      }
+      if(command=='s'){
+        for (int i = 0; i <200; i++){
+
+          digitalWrite(dirPin, LOW);
+          digitalWrite(dirPin2, HIGH);
+          digitalWrite(stepPin, HIGH);
+          digitalWrite(stepPin2, HIGH);           
+          delayMicroseconds(2000);                     
+          digitalWrite(stepPin, LOW);                 
+          digitalWrite(stepPin2, LOW);                   
+          delayMicroseconds(2000); 
+          stepcount++; 
+          turn=0;
+          back=1; 
+          displacement=wheelc/200;
+          position[0]-=displacement*cos(yaw);
+          position[1]-=displacement*sin(yaw);          
+        }
+      }
+        //ASSUME THAT PIN IS LEFT AND PIN2 IS CONNECTED TO RIGHT MOTOR
+        if(command=='a'){
+          for (int i = 0; i <200; i++){
+            digitalWrite(dirPin, HIGH);
+            digitalWrite(dirPin2, LOW);
+            digitalWrite(stepPin, LOW);
             digitalWrite(stepPin2, HIGH);                  
             delayMicroseconds(2000);                     
             digitalWrite(stepPin, LOW);                 
             digitalWrite(stepPin2, LOW);                   
-            delayMicroseconds(2000);
-            
-    }
-
-    else if(command=='s'){  //STOP
-            digitalWrite(dirPin, HIGH);
-            digitalWrite(dirPin2, HIGH);
-            digitalWrite(stepPin, LOW);
-            digitalWrite(stepPin2, LOW);                  
-            delayMicroseconds(2000);                     
-            digitalWrite(stepPin, LOW);                 
-            digitalWrite(stepPin2, LOW);                   
-            delayMicroseconds(2000);
-    }
+            delayMicroseconds(2000); 
+            turn=1; 
+            back=0; 
+            position[0]+=0.08-0.08*cos(yaw);
+            position[1]+=0.08*sin(yaw);          
+          }
+        }
+        
+        if(command=='d'){
+            for (int i = 0; i <200; i++){
+              digitalWrite(dirPin, HIGH);
+              digitalWrite(dirPin2, LOW);
+              digitalWrite(stepPin, HIGH);
+              digitalWrite(stepPin2, LOW);                  
+              delayMicroseconds(2000);                     
+              digitalWrite(stepPin, LOW);                 
+              digitalWrite(stepPin2, LOW);                   
+              delayMicroseconds(2000);
+              turn=1;
+              back=0; 
+              position[0]+=0.08-0.08*cos(yaw);
+              position[1]+=0.08*sin(yaw);          
+            }
+        }
+        
+        }
 
 
 // ================================================================
