@@ -24,14 +24,11 @@ struct CoordinateHash {
   }
 };
 // Define a data structure to represent the adjacency list
-typedef unordered_map<coords, unordered_set<weighted_node, WHash>,
-                      CoordinateHash>
-    AdjacencyList;
+typedef unordered_map<coords, unordered_set<weighted_node, WHash>, CoordinateHash> AdjacencyList;
 
 // Function to add an edge to the adjacency list
-void addEdge(AdjacencyList &adjList, coords &src, coords &dest) {
-  double weight = sqrt(pow((dest.first - src.first), 2) +
-                       pow((dest.second - src.second), 2));
+void addEdge(AdjacencyList &adjList, coords &src, coords &dest) {  
+  double weight = sqrt(pow((dest.first - src.first), 2) + pow((dest.second - src.second), 2));
   adjList[src].insert(make_pair(dest, weight));
   adjList[dest].insert(make_pair(src, weight));
 }
@@ -143,7 +140,22 @@ int main() {
 
   return 0;
 }
-
+typedef std::unordered_map<size_t, std::unordered_map<int, bool>> node_map;
+coords is_node(int x, int y, node_map nodes){
+    node_map::iterator it;
+    coords coord = make_pair(555,555);
+    for (it = nodes.begin(); it!=nodes.end(); it++){
+        int tmp_x = it->first>>32;
+        int tmp_y = ((it->first)<<32)>>32;
+        int x_diff = tmp_x-x;
+        int y_diff = tmp_y-y;
+        if ((x_diff>-20) & (x_diff<20) & (y_diff>-20) & (x_diff<20)){
+            coord = make_pair(tmp_x,tmp_y);
+            return coord;
+        }
+    }
+    return coord;
+}
 
 
 int main(){
@@ -155,13 +167,15 @@ int main(){
     node_map nodes; //map of nodes, coordinates as key, value is
     //a map of key being angles of paths, and boolean ifVisited
     AdjacencyList adj_list;
-    std::Vector<int> last_node = {0, 0};
+    coords last_node = std::make_pair(0,0);
 
-    if (check_node){
-        std::vector<int> pos = {x, y};
-        addEdge(adj_list, pos, last_node);
-        lsdt_node = pos;
-        if (is_node(x,y,nodes)[0] == 555){ // not a defined node
+    if (check_node){//is a node
+        coords pos = std::make_pair(x,y);
+        if (adjList[last_node].count(pos) < 1) {
+            addEdge(adj_list, pos, last_node);
+        };
+        
+        if (is_node(x,y,nodes).firsrt == 555){ // not a defined node
             turn = true;
             int min = 360;
             int max = -180;
@@ -183,9 +197,9 @@ int main(){
             }    
         }
         else{//is a defined node
-            std::vector<int> tmp = is_node(x,y,nodes);
-            int tmp_x = tmp[0];
-            int tmp_y = tmp[1];
+            coords tmp = is_node(x,y,nodes);
+            int tmp_x = tmp.first;
+            int tmp_y = tmp.second;
             std::unordered_map<int,bool> angles;
             angles = nodes[key(tmp_x, tmp_y)];
             for (auto it = angles.begin(); it != angles.end(); it++){
@@ -194,6 +208,7 @@ int main(){
                 }
             }
         }
+        last_node = pos;
     }
     
 }

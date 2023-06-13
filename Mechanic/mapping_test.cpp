@@ -50,14 +50,15 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
 int stepcount=0;
-float position[2] = {0.0, 0.0};
-float position_rl[2] = {0.0, 0.0};
-position_rl[1] = 195;
-float position_ll[2] = {0.0, 0.0};
-position_ll[1] = 195;
-float position_b1[2] = {0.0, 0.0};
-float position_b2[2] = {0.0, 0.0};
-float position_p; 
+std::vector<float> position(2, 0.0);
+std::vector<float> position_rl(2, 4.0);
+
+std::vector<float> position_ll(2, 4.0);
+
+std::vector<float> position_b1(2, 0.0);
+std::vector<float> position_b2(2, 0.0);
+float position_p1; 
+float position_p2;
 float wheelc;   //CALCULATE WHEEL CIRCUMFERENCE AND ENTER IT HERE
 float displacement;
 float yaw;
@@ -67,6 +68,9 @@ bool node;
 bool nodeoptions;
 float gradient1;
 float gradient2;
+
+bool back=0;
+//float position[3] = {0.0, 0.0, 0.0};
 
 float d0 = 0.58; //DEFINE THIS
 //float d1; //DEFINE THIS
@@ -78,7 +82,7 @@ float de_init_yaw;
 float initial_yaw;
 char command; 
 int x, y;
-bool turn;
+bool turn =0;
 int camera_command;
 int direction;
 char color;
@@ -149,21 +153,11 @@ NewPing sonar2(TRIGGER_PIN_2, ECHO_PIN_2, MAX_DISTANCE);
 
 const char ssid[] = "ALINA";
 const char pass[] = "02025509";
-char serverAddress[] = "172.20.10.2";  // server address
+char serverAddress[] = "172.20.10.5";  // server address
 int port = 3001;
 WiFiClient           client;
 WiFiWebSocketClient  wsClient(client, serverAddress, port);
 
-
-JsonObject CreateJson( String CameraFeed){
-  DynamicJsonDocument jBuffer(1024);
-//  DynamicJsonBuffer jBuffer;
-  JsonObject root=jBuffer.createNestedObject();
-  root["CameraFeed"]=CameraFeed;
-  root["msgSender"]="Esp32";
-
-  return root;
-}
 
 
 // ================================================================
@@ -187,6 +181,10 @@ void setup() {
     pinMode(dirPin2, OUTPUT);
     displacement=0.0;
     wheelc=2*PI*0.0325;
+
+
+    position_rl[1] = 195;
+    position_ll[1] = 195;
 
     Serial.begin(115200);   //MIGHT NEED TO CHANGE TO 9600
     WiFi.begin(ssid, pass);
@@ -306,13 +304,15 @@ void loop() {
 // ================================================================
 // ===                      READ FROM CAMERA/FPGA                ===
 // ================================================================
-    position_ll[0] = 1000;
-    position_rl[0] = 1000;
+    position_p1 = 1000;
+    position_p2 = 1000;
     int count_reading = 0;
     int count_coordinates = 0;
-
-    while(Serial2.available() & (count_reading != 14)) {
-        Serial2.readBytes(reading, 1);
+//& (count_reading != 14)
+    while(Serial2.available() ) {
+        Serial.print("fpga");
+        reading = Serial2.read();
+          
         Serial.println(reading,HEX);
         if (reading > 127) {
             if (count_coordinates == 0){
@@ -339,68 +339,83 @@ void loop() {
       
       //PIN IS LEFT AND PIN2 IS RIGHT MOTOR
 
-    if(command=='f'){   //TURN FORWARD BY 1 STEP
-        digitalWrite(dirPin, HIGH);
-        digitalWrite(dirPin2, LOW);
-        digitalWrite(stepPin, HIGH);
-        digitalWrite(stepPin2, HIGH);                   
-        delayMicroseconds(2000);                     
-        digitalWrite(stepPin, LOW);                 
-        digitalWrite(stepPin2, LOW);                   
-        delayMicroseconds(2000);
-        displacement=wheelc/200;
-        position[0]+=displacement*cos(yaw);
-        position[1]+=displacement*sin(yaw);   
-            
-    }
-    else if(command=='b'){  //TURN BACK BY 1 STEP
-        digitalWrite(dirPin, LOW);
-        digitalWrite(dirPin2, HIGH);
-        digitalWrite(stepPin, HIGH);
-        digitalWrite(stepPin2, HIGH);           
-        delayMicroseconds(2000);                     
-        digitalWrite(stepPin, LOW);                 
-        digitalWrite(stepPin2, LOW);                   
-        delayMicroseconds(2000); 
-        displacement=wheelc/200;
-        position[0]-=displacement*cos(yaw);
-        position[1]-=displacement*sin(yaw);          
-    
-    }
-    else if(command=='l'){   //TURN LEFT BY 1 STEP
-        digitalWrite(dirPin, LOW);
-        digitalWrite(dirPin2, LOW);
-        digitalWrite(stepPin, HIGH);
-        digitalWrite(stepPin2, HIGH);                  
-        delayMicroseconds(2000);                     
-        digitalWrite(stepPin, LOW);                 
-        digitalWrite(stepPin2, LOW);                   
-        delayMicroseconds(2000);      
-        
-    }
-    
-    else if(command=='r'){   //TURN RIGHT BY 1 STEP
+if (Serial.available()){ // empty buffer
+      char command = Serial.read();
+      
+      if(command=='w'){
+          for (int i = 0; i <200; i++){
             digitalWrite(dirPin, HIGH);
-            digitalWrite(dirPin2, HIGH);
+            digitalWrite(dirPin2, LOW);
             digitalWrite(stepPin, HIGH);
+            digitalWrite(stepPin2, HIGH);                   
+            delayMicroseconds(2000);                     
+            digitalWrite(stepPin, LOW);                 
+            digitalWrite(stepPin2, LOW);                   
+            delayMicroseconds(2000);
+            stepcount++;
+            turn=0;     
+            back=0; 
+            displacement=wheelc/200;
+            position[0]+=displacement*cos(yaw);
+            position[1]+=displacement*sin(yaw);   
+          }   
+          
+      }
+      if(command=='s'){
+        for (int i = 0; i <200; i++){
+
+          digitalWrite(dirPin, LOW);
+          digitalWrite(dirPin2, HIGH);
+          digitalWrite(stepPin, HIGH);
+          digitalWrite(stepPin2, HIGH);           
+          delayMicroseconds(2000);                     
+          digitalWrite(stepPin, LOW);                 
+          digitalWrite(stepPin2, LOW);                   
+          delayMicroseconds(2000); 
+          stepcount++; 
+          turn=0;
+          back=1; 
+          displacement=wheelc/200;
+          position[0]-=displacement*cos(yaw);
+          position[1]-=displacement*sin(yaw);          
+        }
+      }
+        //ASSUME THAT PIN IS LEFT AND PIN2 IS CONNECTED TO RIGHT MOTOR
+        if(command=='a'){
+          for (int i = 0; i <200; i++){
+            digitalWrite(dirPin, HIGH);
+            digitalWrite(dirPin2, LOW);
+            digitalWrite(stepPin, LOW);
             digitalWrite(stepPin2, HIGH);                  
             delayMicroseconds(2000);                     
             digitalWrite(stepPin, LOW);                 
             digitalWrite(stepPin2, LOW);                   
-            delayMicroseconds(2000);
-            
-    }
-
-    else if(command=='s'){  //STOP
-            digitalWrite(dirPin, HIGH);
-            digitalWrite(dirPin2, HIGH);
-            digitalWrite(stepPin, LOW);
-            digitalWrite(stepPin2, LOW);                  
-            delayMicroseconds(2000);                     
-            digitalWrite(stepPin, LOW);                 
-            digitalWrite(stepPin2, LOW);                   
-            delayMicroseconds(2000);
-    }
+            delayMicroseconds(2000); 
+            turn=1; 
+            back=0; 
+            position[0]+=0.08-0.08*cos(yaw);
+            position[1]+=0.08*sin(yaw);          
+          }
+        }
+        
+        if(command=='d'){
+            for (int i = 0; i <200; i++){
+              digitalWrite(dirPin, HIGH);
+              digitalWrite(dirPin2, LOW);
+              digitalWrite(stepPin, HIGH);
+              digitalWrite(stepPin2, LOW);                  
+              delayMicroseconds(2000);                     
+              digitalWrite(stepPin, LOW);                 
+              digitalWrite(stepPin2, LOW);                   
+              delayMicroseconds(2000);
+              turn=1;
+              back=0; 
+              position[0]+=0.08-0.08*cos(yaw);
+              position[1]+=0.08*sin(yaw);          
+            }
+        }
+        
+        }
 
 
 // ================================================================
@@ -408,45 +423,53 @@ void loop() {
 // ================================================================
 
     //TO-DO: CALCULATE d0 AND d1 !!!
-    if (position_ll != 1000){
-        position_ll[0]=position[0]+d0*cos(yaw)+(position_p[0]-320)sin(yaw);
+    if (position_p1 != 1000){
+      position_ll[0]=position[0]+d0*cos(yaw)+(position_p1-320)*sin(yaw);
     }
-    position_ll[1]=position[1]+d0*sin(yaw)+(position_p[0]-320)cos(yaw);
-    if (position_rl != 1000){
-        position_rl[0]=position[0]+d0*cos(yaw)+(position_p[0]-320)sin(yaw);
+    else{
+      position_ll[0] = 4;
+    }
+    position_ll[1]=position[1]+d0*sin(yaw)+(position_p1-320)*cos(yaw);
+    if (position_p2 != 1000){
+        position_rl[0]=position[0]+d0*cos(yaw)+(position_p2-320)*sin(yaw);
     } 
-    position_rl[1]=position[1]+d0*sin(yaw)+(position_p[0]-320)cos(yaw); 
+    else{
+      position_rl[0] = 4;
+    }
+    position_rl[1]=position[1]+d0*sin(yaw)+(position_p2-320)*cos(yaw); 
+    Serial.print(yaw);
     
 // ================================================================
 // ===               SEND WHITE LED AND ROVER POSITION          ===
 // ================================================================
             
     if(wsClient.connected()){
+        StaticJsonDocument<1024> jsonDocument;
         
         //ROVER POSITION
         jsonDocument["x_r"] = position[0]*900/3.6;
         jsonDocument["y_r"] = position[1]*900/3.6;
-        String coordinatesDatar;  // Serialize the JSON document to a string
-        serializeJson(jsonDocument, coordinatesDatar);
+        // String coordinatesDatar;  // Serialize the JSON document to a string
+        // serializeJson(jsonDocument, coordinatesDatar);
 
         //LEFT WHITE LED POSITION
         jsonDocument["x_ll"] = position_ll[0]*900/3.6;
         jsonDocument["y_ll"] = position_ll[1]*900/3.6;
-        String coordinatesDatall;  // Serialize the JSON document to a string
-        serializeJson(jsonDocument, coordinatesDatall); 
+        // String coordinatesDatall;  // Serialize the JSON document to a string
+        // serializeJson(jsonDocument, coordinatesDatall); 
         
         //RIGHT WHITE LED POSITION         
         jsonDocument["x_rl"] = position_rl[0]*900/3.6;
         jsonDocument["y_rl"] = position_rl[1]*900/3.6;
-        String coordinatesDatarl;  // Serialize the JSON document to a string
-        serializeJson(jsonDocument, coordinatesDatarl);
+        String output;  // Serialize the JSON document to a string
+        serializeJson(jsonDocument, output);
                 
         Serial.print("Sending data ");
         unsigned long start = millis();
         wsClient.beginMessage(TYPE_TEXT);
-        wsClient.print(coordinatesDatar);
-        wsClient.print(coordinatesDatall);
-        wsClient.print(coordinatesDatarl);
+        wsClient.print(output);
+        // wsClient.print(coordinatesDatall);
+        // wsClient.print(coordinatesDatarl);
         wsClient.endMessage();
         // check if a message is available to be received
         int messageSize = wsClient.parseMessage();
@@ -462,8 +485,11 @@ void loop() {
         if (messageSize > 0)
         {
         Serial.println("Received a message:");
-        Serial.println(wsClient.readString());
+        //Serial.println(wsClient.readString());
         }
     } 
-
+    else{
+      Serial.println("disconnected");
+    }
+  delay(5000);
 }
