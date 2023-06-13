@@ -309,18 +309,17 @@ void loop() {
     int count_reading = 0;
     int count_coordinates = 0;
 //& (count_reading != 14)
-    while(Serial2.available() ) {
+    while(Serial2.available() & (count_reading != 14)) {
         Serial.print("fpga");
-        reading = Serial2.read();
-          
+        reading = Serial2.read();  
         Serial.println(reading,HEX);
         if (reading > 127) {
             if (count_coordinates == 0){
-                position_ll[0] = reading - 128;
+                position_p1 = reading - 128;
                 count_coordinates += 1;
             }
             else if (count_coordinates == 1){
-                position_rl[0] = reading - 128;
+                position_p2 = reading - 128;
                 break;
             }
         }
