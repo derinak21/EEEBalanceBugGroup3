@@ -3,6 +3,9 @@
 
 inline size_t key(int i,int j) {return (size_t) i << 32 | (unsigned int) j;}
 
+//this is for checking if current position is at a node
+//returns 555 if node a node
+//return x, y coordinates of the node if it is
 std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered_map<int, bool>> nodes){
     std::unordered_map<size_t, std::unordered_map<int, bool>>::iterator it;
     std::vector<int> coord(2,555);
@@ -34,6 +37,8 @@ int main(){
     int direction;
     bool check_node;
     std::unordered_map<size_t, std::unordered_map<int, bool>> nodes;
+    //map of nodes, coordinates as key, value is
+    //a map of key being angles of paths, and boolean ifVisited
 
     if (check_node){
         if (is_node(x,y,nodes)[0] == 555){ // not a defined node
