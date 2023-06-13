@@ -473,12 +473,12 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
             int tmp_y = tmp[1];
             std::unordered_map<int,bool> angles;
             angles = nodes[key(tmp_x, tmp_y)];
-            i = 0; 
+            //i = 0; 
             for (auto it = angles.begin(); it != angles.end(); it++){
                 if (((it->first-direction)<185 & (it->first-direction)>175) | ((it->first-direction)>-185 & (it->first-direction)<-175)){
                     it->second = true;
                 }
-                i++; 
+                //i++; 
             }
             
         }
@@ -530,25 +530,31 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
 // ================================================================
 
 if(nodeflag&&done_checking){
-    
-    if (i==2){
+    std::vector<int> tmp = is_node(x,y,nodes);
+    int tmp_x = tmp[0];
+    int tmp_y = tmp[1];
+    std::unordered_map<int,bool> angles;
+    angles = nodes[key(tmp_x, tmp_y)];
+    int tmp_angle = angles.end()->first;
+    if (angles.size()==2){
         for (auto it = angles.begin(); it != angles.end(); it++){
-            if ( |it->first-yaw|!=180 ){
+            if ( abs(it->first-yaw)!=180 ){
                 target_yaw=it->first;
             }
         }
     }
     
-    if (i > 2){
-        // TO-DO: if()
-
-        else{
-            target_yaw=angles[1];      
-
+    if (angles.size() > 2){
+        for (auto it = angles.begin(); it != angles.end(); it++){
+            if ( abs(it->first-yaw)==180 ){
+                target_yaw=tmp_angle;
+            }
+            if (!it->second){
+                tmp_angle = it->first;
+            }
+            
         }
-        }
-
-    // TO-DO: coming back to a node - TBD
+    }
 }
 
 
