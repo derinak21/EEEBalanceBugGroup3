@@ -73,8 +73,8 @@ bool nodeoptions;
 float gradient1;
 float gradient2;
 
-float d0; //DEFINE THIS
-float d1; //DEFINE THIS
+float d0 = 0.58; //DEFINE THIS
+//float d1; //DEFINE THIS
 
 float theta_1 = 0; 
 float theta_2 = 0; 
@@ -276,7 +276,7 @@ void loop() {
       // if programming failed, don't try to do anything
     if (!dmpReady) return;
     // read a packet from FIFO
-    if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
+    if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Ladtest packet 
 
         #ifdef OUTPUT_READABLE_YAWPITCHROLL
             // display Euler angles in degrees
@@ -311,7 +311,7 @@ void loop() {
             Serial.print("\t");
             Serial.println(aaWorld.z);
         #endif
-
+    }
 // ================================================================
 // ===                      READ FROM CAMERA/FPGA                ===
 // ================================================================
@@ -397,7 +397,7 @@ if(!initialisation && beaconposition){
         beaconMap.insert(std::make_pair('r', std::make_pair(0, 0)));
 
     }else if(initbeacons[0]="n" && initbeacons[1]="bl"  ){
-        beaconMap.insert(std::make_pair('y', std::make_pair(2.46, 3.6)));
+        beaconMap.insert(std::make_pair('y', std::make_pair(2.4, 3.6)));
         beaconMap.insert(std::make_pair('b', std::make_pair(0, 3.6)));
         beaconMap.insert(std::make_pair('r', std::make_pair(0, 0)));
     }  
@@ -640,8 +640,8 @@ else{ //DEAD-END
 
         position_ll[0]=position[0]+d0*cos(yaw)+(position_p[0]-320)sin(yaw);
         position_ll[1]=position[1]+d0*sin(yaw)+(position_p[0]-320)cos(yaw);
-        position_rl[0]=position[0]+d1*cos(yaw)+(position_p[0]-320)sin(yaw);
-        position_rl[1]=position[1]+d1*sin(yaw)+(position_p[0]-320)cos(yaw); 
+        position_rl[0]=position[0]+d0*cos(yaw)+(position_p[0]-320)sin(yaw);
+        position_rl[1]=position[1]+d0*sin(yaw)+(position_p[0]-320)cos(yaw); 
         
 // ================================================================
 // ===               SEND WHITE LED AND ROVER POSITION          ===
