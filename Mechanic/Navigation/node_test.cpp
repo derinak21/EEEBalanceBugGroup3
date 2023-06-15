@@ -117,7 +117,7 @@ void dmpDataReady() {
 
 #define RXD2 16
 #define TXD2 17
-byte reading[4];
+byte reading;
 unsigned int fpga_r;
 inline size_t key(int i,int j) {return (size_t) i << 32 | (unsigned int) j;}
 
@@ -142,30 +142,19 @@ NewPing sonar2(TRIGGER_PIN_2, ECHO_PIN_2, MAX_DISTANCE);
 // ===                    SETUP FOR SERVER                     ===
 // ================================================================
 
-#define USE_WIFI_NINA         false
-#define USE_WIFI101           false
+// #define USE_WIFI_NINA         false
+// #define USE_WIFI101           false
 
-#include <WiFiWebServer.h>
-#include <WiFiHttpClient.h>
-#include <ArduinoJson.h>
+// #include <WiFiWebServer.h>
+// #include <WiFiHttpClient.h>
+// #include <ArduinoJson.h>
 
-const char ssid[] = "ALINA";
-const char pass[] = "02025509";
-char serverAddress[] = "172.20.10.2";  // server address
-int port = 3001;
-WiFiClient           client;
-WiFiWebSocketClient  wsClient(client, serverAddress, port);
-
-
-JsonObject CreateJson( String CameraFeed){
-  DynamicJsonDocument jBuffer(1024);
-//  DynamicJsonBuffer jBuffer;
-  JsonObject root=jBuffer.createNestedObject();
-  root["CameraFeed"]=CameraFeed;
-  root["msgSender"]="Esp32";
-
-  return root;
-}
+// const char ssid[] = "ALINA";
+// const char pass[] = "02025509";
+// char serverAddress[] = "172.20.10.2";  // server address
+// int port = 3001;
+// WiFiClient           client;
+// WiFiWebSocketClient  wsClient(client, serverAddress, port);
 
 
 // ================================================================
@@ -191,14 +180,15 @@ void setup() {
     wheelc=2*PI*0.0325;
 
     Serial.begin(115200);   //MIGHT NEED TO CHANGE TO 9600
-    WiFi.begin(ssid, pass);
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(1000);
-      Serial.println("Connecting to WiFi...");
-    }
-    Serial.println("Connected to WiFi");
+    // WiFi.begin(ssid, pass);
+    // while (WiFi.status() != WL_CONNECTED) {
+    //   delay(1000);
+    //   Serial.println("Connecting to WiFi...");
+    // }
+    // Serial.println("Connected to WiFi");
     delay(1000);
-    wsClient.begin();
+    
+    //wsClient.begin();
     while (!Serial); // wait for Leonardo enumeration, others continue immediately
     // initialize device
     Serial.println(F("Initializing I2C devices..."));
@@ -267,6 +257,30 @@ void setup() {
 
 std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered_map<int, bool>> nodes);
 
+void print_node(std::unordered_map<size_t, std::unordered_map<int, bool>> myMap){
+  for (const auto& outerPair : myMap) {
+        size_t outerKey = outerPair.first;
+        const auto& innerMap = outerPair.second;
+
+        Serial.println("Outer Key: ");
+        Serial.println(outerKey);
+
+        // Iterate over the inner map
+        for (const auto& innerPair : innerMap) {
+            int innerKey = innerPair.first;
+            bool innerValue = innerPair.second;
+            Serial.println("  Inner Key: ");
+            Serial.println(innerKey);
+            Serial.println("  Value: ");
+            Serial.println(innerValue);
+            
+        }
+  }
+
+}
+
+
+
 void loop() {
    // if programming failed, don't try to do anything
     if (!dmpReady) return;
@@ -318,16 +332,25 @@ void loop() {
         y = position[1];
 
         int count_reading = 0;
-        while(Serial2.available() & (count_reading != 14)) {
+        while(Serial2.available() && (count_reading != 14)) {
             //Serial.print("fpga");
             reading = Serial2.read();  
             Serial.println(reading,HEX);
             if (reading == 1){
+              Serial.println("forward");
+              Serial.println("forward");
+              Serial.println("forward");
+              Serial.println("forward");
+              Serial.println("forward");
                 //forward: is a path ahead
                 nodes[key(x,y)][initial_yaw] = false; //add the forward path to the node
                 forward_path = true;
                 break;
             }
+            // else{
+            //   Serial.println("stop");
+            //   break;
+            // }
             count_reading += 1;
         } 
         command = 'r'; 
@@ -335,41 +358,51 @@ void loop() {
     else{
         int count_reading = 0;
         bool path_ahead = false;
-        while(Serial2.available() & (count_reading != 14)) {
-            //Serial.print("fpga");
+        while(Serial2.available() && (count_reading != 14)) {
+            Serial.print("fpga");
             reading = Serial2.read();  
             Serial.println(reading,HEX);
             if (reading == 1){
                 //forward: is a path ahead
+                Serial.println("forward");
+                Serial.println("forward");
+                Serial.println("forward");
+                Serial.println("forward");
+                Serial.println("forward");
                 path_ahead = true;
                 break;
             }
+            // else{
+            //   Serial.println("stop");
+              
+            // }
             count_reading += 1;
         } 
-        if (forward_path & !path_ahead){
+        if (forward_path && !path_ahead){
             forward_path = false;
         }
-        else if (is_path = false & !forward_path & path_ahead){
+        else if ((is_path == false) && (!forward_path) && path_ahead){
             is_path = true;
             min_angle = yaw;
         }
-        else if (is_path & !path_ahead){
+        else if (is_path && (!path_ahead)){
             is_path = false;
             max_angle = yaw;
 
             float path_angle = (min_angle+max_angle)/2;
 
-            if (max_angle <0 & min_angle>0){
+            if ((max_angle <0) && (min_angle>0)){
                 if (path_angle <0){
-                    path_angle = -180 - path_angle;
+                    path_angle = 180 + path_angle;
                 }
                 else if (path_angle > 0){
-                    path_angle = 180 - path_angle;
+                    path_angle = -180 + path_angle;
                 }
                 else {
                     path_angle = 180;
                 }
             }
+
             nodes[key(x,y)][path_angle] = false;
 
             min_angle = 360;
@@ -447,4 +480,10 @@ void loop() {
               digitalWrite(stepPin2, LOW);                   
               delayMicroseconds(2000);
         }
+        print_node(nodes);
+
+        
+
+        delay(100);
+
 }
