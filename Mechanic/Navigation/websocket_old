@@ -52,9 +52,9 @@ uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\
 int stepcount=0;
 std::vector<float> position(2, 0.0);
 std::vector<float> position_rl(2, 4.0);
-
 std::vector<float> position_ll(2, 4.0);
-
+std::vector<float> position_rl2(2, 4.0);
+std::vector<float> position_ll2(2, 4.0);
 std::vector<float> position_b1(2, 0.0);
 std::vector<float> position_b2(2, 0.0);
 float position_p1; 
@@ -73,7 +73,7 @@ bool back=0;
 //float position[3] = {0.0, 0.0, 0.0};
 
 float d0 = 0.58; //DEFINE THIS
-//float d1; //DEFINE THIS
+float d1 = 0.075; //DEFINE THIS
 
 float theta_1 = 0; 
 float theta_2 = 0; 
@@ -89,6 +89,10 @@ char color;
 std::vector<char> initbeacons;
 std::map<char, std::pair<float, float>> beaconMap;
 std::unordered_map<size_t, std::unordered_map<int, bool>> nodes;
+
+//ultrasonic readings
+int dis_left, dis_right;
+unsigned int us1, us2;
 
 // ================================================================
 // ===                          FLAGS                           ===
@@ -130,8 +134,8 @@ inline size_t key(int i,int j) {return (size_t) i << 32 | (unsigned int) j;}
 
 //TO-DO: CHANGE THE PINS
 //!!!!!!!!!!!!!!!!!!!!
-#define TRIGGER_PIN  12  
-#define ECHO_PIN     11  
+#define TRIGGER_PIN  18  
+#define ECHO_PIN     19  
 #define TRIGGER_PIN_2  12  
 #define ECHO_PIN_2     11  
 #define MAX_DISTANCE 200 
@@ -148,15 +152,17 @@ NewPing sonar2(TRIGGER_PIN_2, ECHO_PIN_2, MAX_DISTANCE);
 #define USE_WIFI101           false
 
 #include <WiFiWebServer.h>
+//#include <ArduinoWebsockets.h>
 #include <WiFiHttpClient.h>
 #include <ArduinoJson.h>
 
 const char ssid[] = "ALINA";
 const char pass[] = "02025509";
-char serverAddress[] = "172.20.10.5";  // server address
+char serverAddress[] = "172.20.10.2";  // server address
 int port = 3001;
 WiFiClient           client;
 WiFiWebSocketClient  wsClient(client, serverAddress, port);
+
 
 
 
@@ -309,7 +315,7 @@ void loop() {
     int count_reading = 0;
     int count_coordinates = 0;
 //& (count_reading != 14)
-    while(Serial2.available() & (count_reading != 14)) {
+    while(Serial2.available() && (count_reading != 14)) {
         Serial.print("fpga");
         reading = Serial2.read();  
         Serial.println(reading,HEX);
@@ -327,6 +333,15 @@ void loop() {
     }  
 
 // ================================================================
+// ===                      READ FROM sensor                ===
+// ================================================================
+us1 = sonar1.ping();
+dis_left = sonar1.convert_cm(us1);
+us2 = sonar2.ping();
+dis_right = sonar2.convert_cm(us2);
+
+
+// ================================================================
 // ===                      MOTION CODE                       ===
 // ================================================================
 
@@ -337,15 +352,15 @@ if (Serial.available()){ // empty buffer
       char command = Serial.read();
       
       if(command=='w'){
-          for (int i = 0; i <200; i++){
+          for (int i = 0; i <30; i++){
             digitalWrite(dirPin, HIGH);
             digitalWrite(dirPin2, LOW);
             digitalWrite(stepPin, HIGH);
             digitalWrite(stepPin2, HIGH);                   
-            delayMicroseconds(2000);                     
+            delayMicroseconds(6000);                     
             digitalWrite(stepPin, LOW);                 
             digitalWrite(stepPin2, LOW);                   
-            delayMicroseconds(2000);
+            delayMicroseconds(6000);
             stepcount++;
             turn=0;     
             back=0; 
@@ -356,16 +371,16 @@ if (Serial.available()){ // empty buffer
           
       }
       if(command=='s'){
-        for (int i = 0; i <200; i++){
+        for (int i = 0; i <30; i++){
 
           digitalWrite(dirPin, LOW);
           digitalWrite(dirPin2, HIGH);
           digitalWrite(stepPin, HIGH);
           digitalWrite(stepPin2, HIGH);           
-          delayMicroseconds(2000);                     
+          delayMicroseconds(6000);                     
           digitalWrite(stepPin, LOW);                 
           digitalWrite(stepPin2, LOW);                   
-          delayMicroseconds(2000); 
+          delayMicroseconds(6000); 
           stepcount++; 
           turn=0;
           back=1; 
@@ -376,36 +391,34 @@ if (Serial.available()){ // empty buffer
       }
         //ASSUME THAT PIN IS LEFT AND PIN2 IS CONNECTED TO RIGHT MOTOR
         if(command=='a'){
-          for (int i = 0; i <200; i++){
+          for (int i = 0; i <30; i++){
             digitalWrite(dirPin, HIGH);
             digitalWrite(dirPin2, LOW);
             digitalWrite(stepPin, LOW);
             digitalWrite(stepPin2, HIGH);                  
-            delayMicroseconds(2000);                     
+            delayMicroseconds(6000);                     
             digitalWrite(stepPin, LOW);                 
             digitalWrite(stepPin2, LOW);                   
-            delayMicroseconds(2000); 
+            delayMicroseconds(6000); 
             turn=1; 
             back=0; 
-            position[0]+=0.08-0.08*cos(yaw);
-            position[1]+=0.08*sin(yaw);          
+         
           }
         }
         
         if(command=='d'){
-            for (int i = 0; i <200; i++){
+            for (int i = 0; i <30; i++){
               digitalWrite(dirPin, HIGH);
               digitalWrite(dirPin2, LOW);
               digitalWrite(stepPin, HIGH);
               digitalWrite(stepPin2, LOW);                  
-              delayMicroseconds(2000);                     
+              delayMicroseconds(6000);                     
               digitalWrite(stepPin, LOW);                 
               digitalWrite(stepPin2, LOW);                   
-              delayMicroseconds(2000);
+              delayMicroseconds(6000);
               turn=1;
               back=0; 
-              position[0]+=0.08-0.08*cos(yaw);
-              position[1]+=0.08*sin(yaw);          
+          
             }
         }
         
@@ -418,43 +431,65 @@ if (Serial.available()){ // empty buffer
 
     //TO-DO: CALCULATE d0 AND d1 !!!
     if (position_p1 != 1000){
-      position_ll[0]=position[0]+d0*cos(yaw)+(position_p1-320)*sin(yaw);
+      position_ll[0]=position[0]+d0*cos(yaw)+(position_p1-40)*sin(yaw)*0.545/80;
+      Serial.print("pos llx");
+      Serial.println(position_ll[0]);
     }
     else{
       position_ll[0] = 4;
     }
-    position_ll[1]=position[1]+d0*sin(yaw)+(position_p1-320)*cos(yaw);
+    position_ll[1]=position[1]+d0*sin(yaw)+(position_p1-40)*cos(yaw)*0.545/80;
     if (position_p2 != 1000){
-        position_rl[0]=position[0]+d0*cos(yaw)+(position_p2-320)*sin(yaw);
+        position_rl[0]=position[0]+d0*cos(yaw)+(position_p2-40)*sin(yaw)*0.545/80;
+        Serial.print("pos rlx");
+        Serial.println(position_rl[0]);
     } 
     else{
       position_rl[0] = 4;
     }
-    position_rl[1]=position[1]+d0*sin(yaw)+(position_p2-320)*cos(yaw); 
+    position_rl[1]=position[1]+d0*sin(yaw)+(position_p2-40)*cos(yaw)*0.545/80; 
+
+    if (dis_left >4 && dis_left <26 ){
+      position_ll2[0]=position[0]+d1*cos(yaw)+dis_left*sin(yaw)/100;
+      position_ll2[1]=position[1]+d1*sin(yaw)+dis_left*cos(yaw)/100;
+    }
+
+    Serial.print("pos rly");
+    Serial.println(position_rl[1]);
+    Serial.print("pos lly");
+    Serial.println(position_ll[1]);
+    Serial.print("pos p1");
+    Serial.println(position_p1);
+    Serial.print("pos p2");
+    Serial.println(position_p2);
+    Serial.print("yaw");
     Serial.print(yaw);
+    Serial.print("Rx");
+    Serial.print(position[0]);
+    Serial.print("Ry");
+    Serial.print(position[1]);
     
 // ================================================================
 // ===               SEND WHITE LED AND ROVER POSITION          ===
 // ================================================================
-            
-    if(wsClient.connected()){
+        if(wsClient.connected()){
         StaticJsonDocument<1024> jsonDocument;
         
         //ROVER POSITION
-        jsonDocument["x_r"] = position[0]*900/3.6;
-        jsonDocument["y_r"] = position[1]*900/3.6;
-        // String coordinatesDatar;  // Serialize the JSON document to a string
-        // serializeJson(jsonDocument, coordinatesDatar);
+        jsonDocument["x_r"] = position[0]*400/3.6 +10;
+        jsonDocument["y_r"] = (3.6-position[1])*400/3.6;
 
         //LEFT WHITE LED POSITION
-        jsonDocument["x_ll"] = position_ll[0]*900/3.6;
-        jsonDocument["y_ll"] = position_ll[1]*900/3.6;
-        // String coordinatesDatall;  // Serialize the JSON document to a string
-        // serializeJson(jsonDocument, coordinatesDatall); 
+        jsonDocument["x_ll"] = position_ll[0]*400/3.6 + 10;
+        jsonDocument["y_ll"] = (3.6-position_ll[1])*400/3.6;
+
         
         //RIGHT WHITE LED POSITION         
-        jsonDocument["x_rl"] = position_rl[0]*900/3.6;
-        jsonDocument["y_rl"] = position_rl[1]*900/3.6;
+        jsonDocument["x_rl"] = position_rl[0]*400/3.6+10;
+        jsonDocument["y_rl"] = (3.6-position_rl[1])*400/3.6;
+
+        //jsonDocument["x_sll"] = position_ll2[0]*400/3.6+10;
+        //jsonDocument["y_sll"] = (3.6-position_ll2[1])*400/3.6;
         String output;  // Serialize the JSON document to a string
         serializeJson(jsonDocument, output);
                 
@@ -466,7 +501,7 @@ if (Serial.available()){ // empty buffer
         // wsClient.print(coordinatesDatarl);
         wsClient.endMessage();
         // check if a message is available to be received
-        int messageSize = wsClient.parseMessage();
+        //int messageSize = wsClient.parseMessage();
 
         unsigned long end = millis();
         unsigned long rtt = end - start;
@@ -476,14 +511,14 @@ if (Serial.available()){ // empty buffer
         // Serial.print(rtt);
         // Serial.println(" ms");
         
-        if (messageSize > 0)
-        {
-        Serial.println("Received a message:");
-        //Serial.println(wsClient.readString());
-        }
+        // if (messageSize > 0)
+        // {
+        // Serial.println("Received a message:");
+        // //Serial.println(wsClient.readString());
+        // }
     } 
     else{
       Serial.println("disconnected");
     }
-  delay(5000);
+  delay(1000);
 }
