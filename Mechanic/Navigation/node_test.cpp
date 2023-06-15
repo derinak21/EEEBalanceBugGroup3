@@ -8,7 +8,7 @@
 
 #include "MPU6050_6Axis_MotionApps20.h"
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-    #include "Wire.h"
+#include "Wire.h"
 #endif
 
 #define dirPin 14
@@ -76,6 +76,7 @@ float theta_2 = 0;
 
 float de_init_yaw;
 float initial_yaw;
+float target_yaw;
 char command; 
 float x, y;
 bool turn;
@@ -85,6 +86,13 @@ char color;
 std::vector<char> initbeacons;
 std::map<char, std::pair<float, float>> beaconMap;
 std::unordered_map<size_t, std::unordered_map<int, bool>> nodes;
+std::unordered_map<float, bool> angles;
+angles[-90] = false;
+angles[-179] = false;
+
+//ultrasonic sensors
+int dis_left, dis_right;
+unsigned int us1, us2;
 
 // ================================================================
 // ===                          FLAGS                           ===
@@ -102,6 +110,16 @@ bool de_flag=false;
 bool done_checking=false;
 bool is_path = false;
 bool forward_path = false;
+
+bool nodeflag_left = false;
+bool nodeflag_right = false;
+bool nodeflag_front = false;
+bool nodeflag = false;
+bool turning = false;
+bool one_round = false;
+bool left_turn = false;
+bool right_turn = false;
+bool finding_target_yaw = false;
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -279,146 +297,8 @@ void print_node(std::unordered_map<size_t, std::unordered_map<int, bool>> myMap)
 
 }
 
-
-
-void loop() {
-   // if programming failed, don't try to do anything
-    if (!dmpReady) return;
-    // read a packet from FIFO
-    if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Ladtest packet 
-
-        #ifdef OUTPUT_READABLE_YAWPITCHROLL
-            // display Euler angles in degrees
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            Serial.print("ypr\t");
-            
-            Serial.print(ypr[0] * 180/M_PI);
-            Serial.print("\t");
-            Serial.print(ypr[1] * 180/M_PI);
-            Serial.print("\t");
-            Serial.println(ypr[2] * 180/M_PI);
-            yaw=ypr[0];
-            pitch=ypr[1];
-            roll=ypr[2];
-        #endif
-      
-
-        #ifdef OUTPUT_READABLE_WORLDACCEL
-            // display initial world-frame acceleration, adjusted to remove gravity
-            // and rotated based on known orientation from quaternion
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetAccel(&aa, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-            mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-            Serial.print("aworld\t");
-            Serial.print(aaWorld.x);
-            Serial.print("\t");
-            Serial.print(aaWorld.y);
-            Serial.print("\t");
-            Serial.println(aaWorld.z);
-        #endif
-    }
-
-    //start turning
-    if (!first_time_node){
-        initial_yaw = yaw;
-        first_time_node = true;
-
-        //set coordinates of this node
-        x = position[0];
-        y = position[1];
-
-        int count_reading = 0;
-        while(Serial2.available() && (count_reading != 14)) {
-            //Serial.print("fpga");
-            reading = Serial2.read();  
-            Serial.println(reading,HEX);
-            if (reading == 1){
-              Serial.println("forward");
-              Serial.println("forward");
-              Serial.println("forward");
-              Serial.println("forward");
-              Serial.println("forward");
-                //forward: is a path ahead
-                nodes[key(x,y)][initial_yaw] = false; //add the forward path to the node
-                forward_path = true;
-                break;
-            }
-            // else{
-            //   Serial.println("stop");
-            //   break;
-            // }
-            count_reading += 1;
-        } 
-        command = 'r'; 
-    }
-    else{
-        int count_reading = 0;
-        bool path_ahead = false;
-        while(Serial2.available() && (count_reading != 14)) {
-            Serial.print("fpga");
-            reading = Serial2.read();  
-            Serial.println(reading,HEX);
-            if (reading == 1){
-                //forward: is a path ahead
-                Serial.println("forward");
-                Serial.println("forward");
-                Serial.println("forward");
-                Serial.println("forward");
-                Serial.println("forward");
-                path_ahead = true;
-                break;
-            }
-            // else{
-            //   Serial.println("stop");
-              
-            // }
-            count_reading += 1;
-        } 
-        if (forward_path && !path_ahead){
-            forward_path = false;
-        }
-        else if ((is_path == false) && (!forward_path) && path_ahead){
-            is_path = true;
-            min_angle = yaw;
-        }
-        else if (is_path && (!path_ahead)){
-            is_path = false;
-            max_angle = yaw;
-
-            float path_angle = (min_angle+max_angle)/2;
-
-            if ((max_angle <0) && (min_angle>0)){
-                if (path_angle <0){
-                    path_angle = 180 + path_angle;
-                }
-                else if (path_angle > 0){
-                    path_angle = -180 + path_angle;
-                }
-                else {
-                    path_angle = 180;
-                }
-            }
-
-            nodes[key(x,y)][path_angle] = false;
-
-            min_angle = 360;
-            max_angle = -360;
-        }
-        command = 'r';
-    }
-
-// ================================================================
-// ===                      MOTION CODE                       ===
-// ================================================================
-
-      
-      //PIN IS LEFT AND PIN2 IS RIGHT MOTOR
-
-      if(command=='f'){   //TURN FORWARD BY 1 STEP
+void motion(char command){
+    if(command=='f'){   //TURN FORWARD BY 1 STEP
             digitalWrite(dirPin, HIGH);
             digitalWrite(dirPin2, LOW);
             digitalWrite(stepPin, HIGH);
@@ -480,10 +360,284 @@ void loop() {
               digitalWrite(stepPin2, LOW);                   
               delayMicroseconds(2000);
         }
-        print_node(nodes);
+}
 
+float find_target_yaw(float l_initial_yaw, std::unordered_map<float, bool> &l_angles){
+    //assumming first time visiting a node
+    //assumming only one path on the right and one path on the left
+    if (one_round || right_turn){
+        if (l_initial_yaw > 90 && l_initial_yaw < 180){
+            float max_angle = l_angles.begin()->first;
+            float min_angle = l_angles.begin()->first;
+            bool negative_exist = false;
+            for (auto it : l_angles){
+                if (it->first > max_angle && !it->second){
+                    max_angle = it->first;
+                }
+                if (it->first < min_angle && !it->second){
+                    min_angle = it->first;
+                }
+                if (it->first < 0 && !it->second){
+                    negative_exist = true;
+                }
+                else {
+                    positive_exist = true;
+                }
+            }
+            if (negative_exist){
+                l_angles[min_angle] = true;
+                return min_angle;
+            }
+            else {
+                l_angles[max_angle] = true;
+                return max_angle;
+            }
+        }
+        else{
+            float max_angle = l_angles.begin()->first;
+            for (auto it : l_angles){
+                if (it->first > max_angle && !it->second){
+                    max_angle = it->first;
+                }
+            }
+            l_angles[max_angle] = true;
+            return max_angle;
+        }
         
+    }
+    else{
+        if (nodeflag_front){
+            l_angles[initial_yaw] = true;
+            return initial_yaw;
+        }
+        else{
+            float max_angle = l_angles.begin()->first;
+            for (auto it : l_angles){
+                if (it->first > max_angle && !it->second){
+                    max_angle = it->first;
+                }
+            }
+            l_angles[max_angle] = true;
+            return max_angle;
+        }
+    }
 
-        delay(100);
+}
+
+
+
+void loop() {
+   // if programming failed, don't try to do anything
+    if (!dmpReady) return;
+    // read a packet from FIFO
+    if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Ladtest packet 
+
+        #ifdef OUTPUT_READABLE_YAWPITCHROLL
+            // display Euler angles in degrees
+            mpu.dmpGetQuaternion(&q, fifoBuffer);
+            mpu.dmpGetGravity(&gravity, &q);
+            mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+            Serial.print("ypr\t");
+            
+            Serial.print(ypr[0] * 180/M_PI);
+            Serial.print("\t");
+            Serial.print(ypr[1] * 180/M_PI);
+            Serial.print("\t");
+            Serial.println(ypr[2] * 180/M_PI);
+            yaw=ypr[0];
+            pitch=ypr[1];
+            roll=ypr[2];
+        #endif
+      
+
+        #ifdef OUTPUT_READABLE_WORLDACCEL
+            // display initial world-frame acceleration, adjusted to remove gravity
+            // and rotated based on known orientation from quaternion
+            mpu.dmpGetQuaternion(&q, fifoBuffer);
+            mpu.dmpGetAccel(&aa, fifoBuffer);
+            mpu.dmpGetGravity(&gravity, &q);
+            mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+            mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
+            Serial.print("aworld\t");
+            Serial.print(aaWorld.x);
+            Serial.print("\t");
+            Serial.print(aaWorld.y);
+            Serial.print("\t");
+            Serial.println(aaWorld.z);
+        #endif
+    }
+
+    command = '*';
+
+    //check ultrasonic sensor readings to determine whether it is a node
+    us1 = sonar1.ping();
+    us2 = sonar2.ping();
+
+    dis_left = sonar1.convert_cm(us1);
+    dis_right = sonar2.convert_cm(us2);
+
+    if (finding_target_yaw){
+        if ((target_yaw < -178 && target_yaw >=-180) || (target_yaw > 178 && target_yaw <=180)){
+            if (yaw < -177 || yaw > 177){
+                //when target_yaw is reached, go forward by 20 steps to avoid checking node again
+                finding_target_yaw = false;
+                for (int i = 0; i < 15; i++){
+                    motion('f');
+                }
+            }
+            else if (target_yaw > yaw){
+                for (int i = 0; i < 10; i++){
+                    motion('r');
+                }
+            }
+            else{
+                for (int i = 0; i < 10; i++){
+                    motion('l');
+                }
+            }
+        }
+        else {
+            if (yaw < (target_yaw+2) || yaw > (target_yaw-2)){
+                //when target_yaw is reached, go forward by 20 steps to avoid checking node again
+                finding_target_yaw = false;
+                for (int i = 0; i < 15; i++){
+                    motion('f');
+                }
+            }
+            else if (target_yaw > yaw){
+                for (int i = 0; i < 10; i++){
+                    motion('r');
+                }
+            }
+            else{
+                for (int i = 0; i < 10; i++){
+                    motion('l');
+                }
+            }
+        }
+        
+    }
+
+    else {
+        if (dis_left < 27 && dis_left > 3){
+        nodeflag_left = true;
+        }
+        else{
+            nodeflag_left = false;
+        }
+
+        if (dis_right < 27 && dis_right > 3){
+            nodeflag_right = true;
+        }
+        else {
+            nodeflag_right = false;
+        }
+
+        nodeflag = nodeflag_left || nodeflag_right;
+
+        if (nodeflag && !turning){
+            initial_yaw = yaw;
+            turning = true;
+            if (nodeflag_left && nodeflag_right){
+                //turn 360 degree
+                one_round = true;
+                command = 'r';
+            }
+            else if (nodeflag_left){
+                //turn 180 degree to the left
+                left_turn = true;
+                command = 'l';
+            }
+            else if (nodeflag_right){
+                //turn 180 degree to the right
+                right_turn = true;
+                command = 'r';
+            }
+        }
+        
+        //start turning
+        if (turning && one_round){
+            if (initial_yaw > -180 && initial_yaw <=-175){
+                if ((yaw < initial_yaw) || (yaw > (355 + initial_yaw))){
+                    //stop turning and find target angle
+                    target_yaw = find_target_yaw(initial_yaw, angles);
+                    finding_target_yaw = true;
+                    turning = false;
+                    one_round = false;
+                }
+                else{
+                    command = 'r';
+                }
+            }
+            else{
+                if (yaw >= (initial_yaw - 5) && yaw <= initial_yaw){
+                    target_yaw = find_target_yaw(initial_yaw, angles);
+                    finding_target_yaw = true;
+                    turning = false;
+                    one_round = false;
+                }
+                else{
+                    command = 'r';
+                }
+            }
+        }
+
+        if (turning && left_turn){
+            if (initial_yaw <= -90 && initial_yaw > -180){
+                if (yaw > (initial_yaw + 180) && yaw < (initial_yaw + 185)){
+                    target_yaw = find_target_yaw(initial_yaw, angles);
+                    finding_target_yaw = true;
+                    turning = false;
+                    left_turn = false;
+                }
+                else{
+                    command = 'l';
+                }
+            }
+            else{
+                if (yaw > initial_yaw - 175 && yaw < (initial_yaw - 180)){
+                    target_yaw = find_target_yaw(initial_yaw, angles);
+                    finding_target_yaw = true;
+                    turning = false;
+                    left_turn = false;
+                }
+                else {
+                    command = 'l';
+                }
+            }
+        }
+
+        if (turning && right_turn){
+            if (initial_yaw >= 90 && initial_yaw < 180){
+                if (yaw <= (initial_yaw - 180) && yaw >= (initial_yaw - 185)){
+                    target_yaw = find_target_yaw(initial_yaw, angles);
+                    finding_target_yaw = true;
+                    turning = false;
+                    right_turn = false;
+                }
+                else{
+                    command = 'r';
+                }
+            }
+            else{
+                if (yaw > initial_yaw + 175 && yaw < (initial_yaw + 180)){
+                    target_yaw = find_target_yaw(initial_yaw, angles);
+                    finding_target_yaw = true;
+                    turning = false;
+                    right_turn = false;
+                }
+                else {
+                    command = 'r';
+                }
+            }
+        }
+    }
+    
+    motion(command);
+      
+      //PIN IS LEFT AND PIN2 IS RIGHT MOTOR
+    print_node(nodes);
+
+    delay(100);
 
 }
