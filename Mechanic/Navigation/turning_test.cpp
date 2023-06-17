@@ -65,8 +65,8 @@ bool node;
 bool nodeoptions;
 float gradient1;
 float gradient2;
-float min_angle = 360;
-float max_angle = -360;
+float min_node_angle = 360;
+float max_node_angle = -360;
 
 float d0 = 0.58; //DEFINE THIS
 //float d1; //DEFINE THIS
@@ -94,7 +94,12 @@ int dis_left, dis_right;
 unsigned int us1, us2;
 int turning_count = 0;
 
-int node_count = 0;
+int node_count_left = 0;
+int node_count_right = 0;
+int current_node; // keep track of next node the rover is going to when finding_node is true
+std::unordered_map<size_t, std::vector<std::pair<size_t, float>>> adjacent_nodes;//float stores the direction to value node if rover is at key node
+std::unordered_map<size_t, bool> explored_nodes;
+std::vector<size_t> tmp_coord;
 // ================================================================
 // ===                          FLAGS                           ===
 // ================================================================
@@ -111,6 +116,7 @@ bool de_flag=false;
 bool done_checking=false;
 bool is_path = false;
 bool forward_path = false;
+bool path_ahead = false;
 
 bool nodeflag_left = false;
 bool nodeflag_right = false;
@@ -123,6 +129,8 @@ bool right_turn = false;
 bool finding_target_yaw = false;
 bool to_left = false;
 bool to_right = false;
+
+bool finding_node = false;//true when the rover is on the way to a know node
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -345,96 +353,158 @@ void motion(char command){
 
 float find_target_yaw(float l_initial_yaw, std::unordered_map<float, bool> &l_angles){
     std::unordered_map<float, bool>::iterator it;
-    if (one_round || right_turn){
-        if (l_initial_yaw > 1.57 && l_initial_yaw < PI){
-            float max_angle = l_angles.begin()->first;
-            float min_angle = l_angles.begin()->first;
-            bool negative_exist = false;
-            for (it = l_angles; it != l_angles.end(); it++){
-                if (l_angles[max_angle]==true){
-                    max_angle = it->first;
-                }
-                if (l_angles[min_angle]==true){
-                    min_angle = it->first;
-                }
-                if (it->first > max_angle && !it->second){
-                    max_angle = it->first;
-                }
-                if (it->first < min_angle && !it->second){
-                    min_angle = it->first;
-                }
-                if (it->first < 0 && !it->second){
-                    negative_exist = true;
-                }
-                else {
-                    positive_exist = true;
-                }
-            }
-            if (negative_exist && l_angles[min_angle] == false){
-                l_angles[min_angle] = true;
-                return min_angle;
-            }
-            else if (l_angles[max_angle] == false){
-                l_angles[max_angle] = true;
-                return max_angle;
+    
+    if (l_angles.size()==2){
+        for (auto it = l_angles.begin(); it != l_angles.end(); it++){
+            if (!(abs(it->first-yaw)>=(PI-0.26) && abs(it->first-yaw)<=(PI+0.26))){
+                return it->first;
             }
         }
-        else{
-            float max_angle = l_angles.begin()->first;
-            for (it = l_angles.begin(); it != l_angles.end(); it++){
-                if (l_angles[max_angle]==true){
-                    max_angle = it->first;
-                }
-                if (it->first > max_angle && !it->second){
-                    max_angle = it->first;
-                }
-            }
-            if (l_angles[max_angle]==false){
-                l_angles[max_angle] = true;
-                return max_angle;
-            }
-        }
-        
-    }
+    }   
+    
     else{
-        if (nodeflag_front){
-
-            for (it = l_angles.begin(); it != l_angles.end(); it++){
-                if (it->first > (initial_yaw-0.07) && it->first < (initial_yaw+0.07)){
-                    it->second = true;
-                    return it->first;
+        if (one_round || right_turn){
+            if (l_initial_yaw > 1.57 && l_initial_yaw < PI){
+                float max_angle = l_angles.begin()->first;
+                float min_angle = l_angles.begin()->first;
+                bool negative_exist = false;
+                for (it = l_angles; it != l_angles.end(); it++){
+                    if (l_angles[max_angle]==true){
+                        max_angle = it->first;
+                    }
+                    if (l_angles[min_angle]==true){
+                        min_angle = it->first;
+                    }
+                    if (it->first > max_angle && !it->second){
+                        max_angle = it->first;
+                    }
+                    if (it->first < min_angle && !it->second){
+                        min_angle = it->first;
+                    }
+                    if (it->first < 0 && !it->second){
+                        negative_exist = true;
+                    }
+                    else {
+                        positive_exist = true;
+                    }
+                }
+                if (negative_exist && l_angles[min_angle] == false){
+                    l_angles[min_angle] = true;
+                    return min_angle;
+                }
+                else if (l_angles[max_angle] == false){
+                    l_angles[max_angle] = true;
+                    return max_angle;
                 }
             }
+            else{
+                float max_angle = l_angles.begin()->first;
+                for (it = l_angles.begin(); it != l_angles.end(); it++){
+                    if (l_angles[max_angle]==true){
+                        max_angle = it->first;
+                    }
+                    if (it->first > max_angle && !it->second){
+                        max_angle = it->first;
+                    }
+                }
+                if (l_angles[max_angle]==false){
+                    l_angles[max_angle] = true;
+                    return max_angle;
+                }
+            }
+            
         }
         else{
-            float max_angle = l_angles.begin()->first;
-            for (it = l_angles.begin(); it != l_angles.end(); it++){
-                if (l_angles[max_angle]==true){
-                    max_angle = it->first;
-                }
-                if (it->first > max_angle && !it->second){
-                    max_angle = it->first;
+            if (nodeflag_front){
+
+                for (it = l_angles.begin(); it != l_angles.end(); it++){
+                    if (it->first > (initial_yaw-0.07) && it->first < (initial_yaw+0.07)){
+                        it->second = true;
+                        return it->first;
+                    }
                 }
             }
-            if (l_angles[max_angle]==false){
-                l_angles[max_angle] = true;
-                return max_angle;
+            else{
+                float max_angle = l_angles.begin()->first;
+                for (it = l_angles.begin(); it != l_angles.end(); it++){
+                    if (l_angles[max_angle]==true){
+                        max_angle = it->first;
+                    }
+                    if (it->first > max_angle && !it->second){
+                        max_angle = it->first;
+                    }
+                }
+                if (l_angles[max_angle]==false){
+                    l_angles[max_angle] = true;
+                    return max_angle;
+                }
             }
         }
     }
 
     //will reach this point when all paths at this node has been visited
-    std::unordered_map<size_t, std::unordered_map<size_t,bool>> adjacent_nodes;
+    
     std::vector<int> node_coord = is_node(x,y,nodes);
     size_t tmp = key(node_coord[0], node_coord[1]);
-    std::unordered_map<size_t, std::unordered_map<size_t,bool>>::iterator it2;
-    std::unordered_map<size_t, std::unordered_map<size_t,bool>>::iterator it3;
-    for (it2 = adjacent_nodes.begin(); it2 != adjacent_nodes.end(); it2++){
-        for (it3 = it2->second.begin(); it2 != it2->second.end(); it3++){
-            if (!it3->second){
-                return finding_target_yaw_2(tmp, it3->first);
+    std::unordered_map<size_t, std::vector<size_t>>::iterator it2;
+    it2 = adjacent_nodes.find(tmp);
+    std::vector<size_t> tmp_nodes = it2->second;
+    std::unordered_map<size_t, bool>::iterator it3;
+    for (int i = 0; i<tmp_nodes.size(); i++){
+        it3 = explored_nodes.find(tmp_nodes[i].first);
+        if (!it3->second){
+            return tmp_nodes[i].second;//to find direction to next node not fully explored
+        }
+    }
+
+    //when all adjacent node is fully explored too
+    for (it3 = explored_nodes.begin(); it3!=explored_nodes.end(); it3++){
+        if (!it3->second){
+            tmp_coord = shortest_path(tmp, it3->first);//need to return a list of nodes to visit including the target node
+            //going to tmp_coord from tmp
+            for (int i = 0; i<tmp_nodes.size(); i++){
+                if (tmp_nodes[i].first == tmp_coord[0]){
+                    finding_node = true;
+                    current_node = 0;//keep track of the node that the rover is on the way to
+                    return tmp_nodes[i].second;
+                }
+            }            //need to figure out a way to store all nodes to be visited
+        }
+    }
+    
+}
+
+void add_node(){
+    //forward_path is set true when initial_yaw is one of the paths
+    //path_ahead value depends on sensor reading
+    if (forward_path && !path_ahead){
+            forward_path = false;
+    }
+    else if (!is_path && !forward_path && path_ahead){
+        is_path = true;
+        min_node_angle = yaw;
+    }
+    else if (is_path && !path_ahead){
+        is_path = false;
+        max_node_angle = yaw;
+
+        float path_angle = (min_node_angle+max_node_angle)/2;
+
+        if (max_node_angle <0 && min_node_angle>0){
+            if (path_angle <0){
+                path_angle = PI + path_angle;
+            }
+            else if (path_angle > 0){
+                path_angle = -PI + path_angle;
+            }
+            else {
+                path_angle = PI;
             }
         }
+        angles[path_angle] = false;
+
+        min_node_angle = 360;
+        max_node_angle = -360;
     }
 }
 
@@ -479,11 +549,12 @@ void loop() {
         #endif
     }
 
-    angles[1.57] = false;
+    //angles[1.57] = false;
     //angles[3.14] = false;
 
     command = '*';
 
+    //FPGA reading
     int count_reading = 0;
     while(Serial2.available() && (count_reading != 14)) {
         Serial.print("fpga");
@@ -505,6 +576,51 @@ void loop() {
         }
         count_reading += 1;
     }  
+
+    //determine whether it is a node
+    us1 = sonar1.ping();
+    us2 = sonar2.ping();
+
+    dis_left = sonar1.convert_cm(us1);
+    dis_right = sonar2.convert_cm(us2);
+
+    //to determine whether there is a node on the left
+    if (dis_left < 27 && dis_left > 3){
+        node_count_left = 0;
+        }
+        else{
+            node_count_left += 1;
+        }
+
+    if (node_count_left == 30){
+        nodeflag_left = true;
+        node_count_left = 0;
+    }
+
+    //to determine whether there is a node on the right
+    if (dis_right < 27 && dis_right > 3){
+        node_count_right = 0;
+        }
+        else{
+            node_count_right += 1;
+        }
+
+    if (node_count_right == 30){
+        nodeflag_right = true;
+        node_count_right = 0;
+    }
+
+    //to determine whether current position is a node
+    nodeflag = nodeflag_left || nodeflag_right;
+
+    //take reading from the sensor in front
+    if (dis_front){
+        path_ahead = true;
+    }
+
+    if (nodeflag && !turning && path_ahead){
+        forward_path = true;
+    }
 
     if (finding_target_yaw){
         if ((target_yaw < -3.1 && target_yaw >=-3.14) || (target_yaw > 3.1 && target_yaw <= 3.14)){
@@ -551,79 +667,196 @@ void loop() {
         
     }
 
-    else if (to_left && !turning){
+    else if (to_left && !turning){//correct directions when going in straight line
       Serial.println("to_left");
       motion('l');
       //to_left = false;
       delay(40);
     }
 
-    else if (to_right && !turning){
+    else if (to_right && !turning){//correct directions when going in straight line
       Serial.println("to_right");
       motion('r');
       //to_right = false;
       delay(40);
     }
 
-    else {
-      //check ultrasonic sensor readings to determine whether it is a node
-      us1 = sonar1.ping();
-      us2 = sonar2.ping();
+    else if (finding_node){
+        //when reach one of the intermediate node, increase current_node by 1 and find next direction to go to
 
-      dis_left = sonar1.convert_cm(us1);
-      dis_right = sonar2.convert_cm(us2);
-
-      if (dis_left < 27 && dis_left > 3){
-          node_count = 0;
-          }
-          else{
-              node_count += 1;
-          }
-
-      if (node_count == 3){
-        nodeflag_left = true;
-        node_count = 0;
-      }
-      Serial.print("nodeflag ");
-      Serial.print(dis_left);
-      Serial.print(" ");
-      Serial.println(nodeflag_left);
-
-      Serial.print("yaw");
-      Serial.println(yaw);
-
-    //   Serial.print("turning 1:");
-    //   Serial.println(turning);
-
-      if (nodeflag_left && !turning){
-        turning = true;
-        initial_yaw = yaw;
-        for (int i = 0; i<70; i++){//was 110
-          motion('f');
+        if (nodeflag){
+            if (current_node == tmp_coord.size()-1){
+                finding_node = false;
+                finding_target_yaw = true;            
+                target_yaw = find_target_yaw(yaw, nodes.find(current_node)->second);
+            }
+            else{
+                //assumming not target node and 
+                std::unordered_map<size_t, std::vector<std::pair<size_t,float>>>::iterator it4;
+                it4 = adjacent_nodes.find(tmp_coord[current_node]);
+                for (int i = 0; i<it4->second.size(); i++){
+                    if (it4->second[i].first == tmp_coord[current_node]){
+                        finding_node = true;
+                        current_node += 1;//keep track of the node that the rover is on the way to
+                        target_yaw = it4->second[i].second;
+                        finding_target_yaw = true;
+                        break;
+                    }
+                }         
+            }
         }
-      }
-
-      else if (turning_count > 100 && turning && yaw >= (initial_yaw - 0.03) && yaw < (initial_yaw-0.015)){
-        // for (int i = 0; i<300; i++){
-        //   motion('f');
-        // }
-        turning = false;
-        finding_target_yaw = true;
-        target_yaw = find_target_yaw(initial_yaw, angles);
-        Serial.print("target yaw");
-        Serial.println(target_yaw);
-        
-      }
-
-      else if (turning) {
-        motion('r');
-        turning_count += 1;
-      }
-      else{
-        motion('f');
-      }
-
     }
 
-    
+    else {
+        std::vector<int> node_coord = is_node(x,y,nodes);
+        if (nodeflag && node_coord[0]==555){
+            //std::unordered_map<float, bool> angles;
+            if (!turning){
+                turning = true;
+                initial_yaw = yaw;
+                if (nodeflag_left && nodeflag_right){
+                        //turn 360 degree
+                        one_round = true;
+                    }
+                    else if (nodeflag_left){
+                        //turn 180 degree to the left
+                        left_turn = true;
+                    }
+                    else if (nodeflag_right){
+                        //turn 180 degree to the right
+                        right_turn = true;
+                    }
+                for (int i = 0; i<70; i++){//was 110
+                    motion('f');
+                }
+            }
+
+            else if (turning){
+                turning_count += 1;
+                if (one_round){
+                    if (initial_yaw > -PI && initial_yaw <= (-PI + 0.03)){
+                        if (turning_count>100 && (yaw < initial_yaw) || (yaw > (2*PI-0.03 + initial_yaw))){
+                            //stop turning and find target angle
+                            target_yaw = find_target_yaw(initial_yaw, angles);
+                            finding_target_yaw = true;
+                            turning = false;
+                            one_round = false;
+                            //add node to nodes
+                            nodes[key(x,y)] = angles;
+                            angles.clear();
+                        }
+                        else{
+                            motion('r');
+                            add_node();
+                        }
+                    }
+                    else{
+                        if (yaw >= (initial_yaw - 0.03) && yaw <= initial_yaw){
+                            target_yaw = find_target_yaw(initial_yaw, angles);
+                            finding_target_yaw = true;
+                            turning = false;
+                            one_round = false;
+                            //add node to nodes
+                            nodes[key(x,y)] = angles;
+                            angles.clear();
+                        }
+                        else{
+                            motion('r');
+                            add_node();
+                        }
+                    }
+                }
+                else if (left_turn){
+                    if (initial_yaw <= -PI/2 && initial_yaw > -PI){
+                        if (turning_count > 100 && yaw > (initial_yaw + PI) && yaw < (initial_yaw + PI + 0.03)){
+                            target_yaw = find_target_yaw(initial_yaw, angles);
+                            finding_target_yaw = true;
+                            turning = false;
+                            left_turn = false;
+                            //add node to nodes
+                            nodes[key(x,y)] = angles;
+                            angles.clear();
+                        }
+                        else{
+                            motion('l');
+                            add_node();
+                        }
+                    }
+                    else{
+                        if (turning_count > 100 && yaw > (initial_yaw - PI+0.03) && yaw < (initial_yaw - PI)){
+                            target_yaw = find_target_yaw(initial_yaw, angles);
+                            finding_target_yaw = true;
+                            turning = false;
+                            left_turn = false;
+                            //add node to nodes
+                            nodes[key(x,y)] = angles;
+                            angles.clear();
+                        }
+                        else {
+                            motion('l');
+                            add_node();
+                        }
+                    }
+                }
+                else{
+                    if (initial_yaw >= PI/2 && initial_yaw < PI){
+                        if (yaw <= (initial_yaw - PI) && yaw >= (initial_yaw - PI-0.03) && turning_count > 100){
+                            target_yaw = find_target_yaw(initial_yaw, angles);
+                            finding_target_yaw = true;
+                            turning = false;
+                            right_turn = false;
+                            //add node to nodes
+                            nodes[key(x,y)] = angles;
+                            angles.clear();
+                        }
+                        else{
+                            motion('r');
+                            add_node();
+                        }
+                    }
+                    else{
+                        if (yaw > (initial_yaw + PI - 0.03) && yaw < (initial_yaw + PI) && turning_count > 100){
+                            target_yaw = find_target_yaw(initial_yaw, angles);
+                            finding_target_yaw = true;
+                            turning = false;
+                            right_turn = false;
+                            //add node to nodes
+                            nodes[key(x,y)] = angles;
+                            angles.clear();
+                        }
+                        else {
+                            motion('r');
+                            add_node();
+                        }
+                    }
+                }
+            }
+        }
+        else if (nodeflag){
+            //when the node is visited the second time
+            if (nodeflag_left && nodeflag_right){
+                //turn 360 degree
+                one_round = true;
+            }
+            else if (nodeflag_left){
+                //turn 180 degree to the left
+                left_turn = true;
+            }
+            else if (nodeflag_right){
+                //turn 180 degree to the right
+                right_turn = true;
+            }
+            size_t node_coords = key(node_coord[0], node_coord[1]);
+            std::unordered_map<float, bool> tmp_angles = nodes.find(node_coords)->second;
+            target_yaw = find_target_yaw(yaw, tmp_angles);
+            finding_target_yaw = true;
+        }
+        else{
+                motion('f');
+            }
+    }    
 }
+
+//To-Do: 
+//move is_node function here
+//add code to add the path the rover comes from here
