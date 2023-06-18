@@ -3,9 +3,7 @@
 #include "I2Cdev.h"
 
 #include <AccelStepper.h>
-
-#include <BasicLinearAlgebra.h>
-
+ 
 #include "MPU6050_6Axis_MotionApps20.h"
 //#include "MPU6050.h" // not necessary if using MotionApps include file
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
@@ -21,16 +19,21 @@
 #define dirPin2 15
 #define stepPin2 23
 
+
 MPU6050 mpu;
 //MPU6050 mpu(0x69); // <-- use for AD0 high
 
-using namespace BLA;
+
+
 
 AccelStepper m1(AccelStepper::DRIVER, stepPin, dirPin); //motor left
 AccelStepper m2(AccelStepper::DRIVER, stepPin2, dirPin2);   //motor right
+TaskHandle_t Task1;
 
 
 #define OUTPUT_READABLE_YAWPITCHROLL
+
+//#define OUTPUT_READABLE_ACCELGYRO
 
 #define INTERRUPT_PIN  2 // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
@@ -57,38 +60,26 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
 int stepcount=0;
-bool turn=0;
-bool back=0;
 float position[3] = {0.0, 0.0, 0.0};
 float wheelc;   //CALCULATE WHEEL CIRCUMFERENCE AND ENTER IT HERE
 float displacement;
-float x;
 float yaw;
 float roll;
-float pitch;
+volatile float pitch;
 float direction=M_PI/4;
 float inertia=1.4;
-float a1=0;
-float a2=0;
 float s1=0;
 float s2=0;
-float velocity=0;
-unsigned long interval = 50;;
+float speed=0;
+unsigned long interval = 1000;
 unsigned long previousMillis = 0;
 unsigned long currentMillis = 0;
-
 // TUNE THESE BY TRIAL AND ERROR
-float Kp;
-float Ki;
-float Kd;
-
+float Kp=0, Ki=0, Kd=0;
+float Kps=0, Kis=0, Kds=0;
 // variables for PID controller
-float tpitch=0;
-float pepitch=0;
-float epitch=0;
-float ipitch=0;        //integral of roll and pitch
-float dpitch=0;        //derivative of roll and pitch
-float pid=100;           //motor speeds
+float tpitch=0, pepitch=0, epitch=0, ipitch=0, dpitch=0, pid=0;
+float tspeed=0, pespeed=0, espeed=0, ispeed=0, dspeed=0, pids=0;
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -113,8 +104,7 @@ void setup() {
     #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
         Fastwire::setup(400, true);
     #endif
-    
-
+   
 
     // Declare pins as output:
     pinMode(stepPin, OUTPUT);
@@ -124,7 +114,6 @@ void setup() {
     yaw=0.0;
     roll=0.0;
     pitch=0.0;
-    x=0.0;
     displacement=0.0;
     wheelc=2*PI*0.0325; //radius of the wheels are 0.0325
     direction=0;
@@ -158,6 +147,11 @@ void setup() {
     mpu.setYGyroOffset(76);
     mpu.setZGyroOffset(-85);
     mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
+    m1.setMaxSpeed(2000);
+    m2.setMaxSpeed(2000);
+    m1.setAcceleration(1000);
+    m2.setAcceleration(1000);
+
 
     // make sure it worked (returns 0 if so)
     if (devStatus == 0) {
@@ -182,6 +176,9 @@ void setup() {
 
         // get expected DMP packet size for later comparison
         packetSize = mpu.dmpGetFIFOPacketSize();
+       
+    // configure LED for output
+    pinMode(LED_PIN, OUTPUT);
     } else {
         // ERROR!
         // 1 = initial memory load failed
@@ -190,14 +187,59 @@ void setup() {
         Serial.print(F("DMP Initialization failed (code "));
         Serial.print(devStatus);
         Serial.println(F(")"));
+     
     }
+    xTaskCreatePinnedToCore(
+      Task1code, /* Function to implement the task */
+      "Task1", /* Name of the task */
+      10000,  /* Stack size in words */
+      NULL,  /* Task input parameter */
+      1,  /* Priority of the task */
+      &Task1,  /* Task handle. */
+      0); /* Core where the task should run */
 
-    // configure LED for output
-    pinMode(LED_PIN, OUTPUT);
 }
 
+void Task1code( void* parameter) {
+  Serial.print("inside other core");
+  while(1) {
+        currentMillis = millis();
+
+        //SPEED CONTROLLER
+        tspeed=500;
+        Kps=0.01;
+        Kis=0;
+        Kds=0;
+        speed=m1.speed();
+        espeed = tspeed - speed;
+        ispeed += espeed;
+        dspeed=espeed-pespeed;
+        pids = Kps * espeed + Kis * ispeed + Kds * dspeed;
+        tpitch=constrain(pids, -45, 45);
+        pespeed=espeed;
 
 
+        //PITCH CONTROLLER
+        Kp=16000;
+        Ki=0;
+        Kd=0;
+        epitch = tpitch - pitch;
+        ipitch += epitch;
+        dpitch=epitch-pepitch;
+        pid = Kp * epitch + Ki * ipitch + Kd * dpitch;
+        pepitch=epitch;
+        s1+=pid;
+        s1=constrain(s1, -2000, 2000);
+
+        m1.setSpeed(-s1);
+        m2.setSpeed(s1);
+        m1.runSpeed();  // Acceleration in steps per second per second
+        m2.runSpeed();  // Acceleration in steps per second per second
+        delay(1);
+
+ 
+    }
+}
 // ================================================================
 // ===                    MAIN PROGRAM LOOP                     ===
 // ================================================================
@@ -205,93 +247,30 @@ void setup() {
 void loop() {
 
     // if programming failed, don't try to do anything
-    if (!dmpReady) return;
+   
+if (!dmpReady) return;
     // read a packet from FIFO
     currentMillis = millis();
 
-    if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
-        
-      
+    if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet
+       
+     
         #ifdef OUTPUT_READABLE_YAWPITCHROLL
             // display Euler angles in degrees
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
             Serial.print("ypr\t");
-            
+           
             Serial.print(ypr[0] * 180/M_PI);
             Serial.print("\t");
             Serial.print(ypr[1] * 180/M_PI);
             Serial.print("\t");
             Serial.println(ypr[2] * 180/M_PI);
             yaw=ypr[0];
-            pitch=ypr[1];
+            pitch=ypr[1]* 180/M_PI;
             roll=ypr[2];
         #endif
-        //yaw, roll. pitch
-
-        #ifdef OUTPUT_READABLE_WORLDACCEL
-            // display initial world-frame acceleration, adjusted to remove gravity
-            // and rotated based on known orientation from quaternion
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetAccel(&aa, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-            mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-            Serial.print("aworld\t");
-            Serial.print(aaWorld.x);
-            Serial.print("\t");
-            Serial.print(aaWorld.y);
-            Serial.print("\t");
-            Serial.println(aaWorld.z);
-        #endif
-
-
-// ================================================================
-// ===                          YAW                             ===
-// ================================================================
-        
-        K_p_y=0.5;
-        K_i_y=0;
-        K_d_y=0;
-        eyaw = tyaw - yaw;
-        iyaw += eyaw;
-        dpitch=mpu.getRotationZ();
-        pid_y = Kp * eyaw + Ki * iyaw + Kd * dyaw;
-
-// ================================================================
-// ===                          DISTANCE                        ===
-// ================================================================
-
-        K_p_d=0.5;
-        K_i_d=0;
-        K_d_d=0;
-        edistance = tpitch - pitch;
-        ipitch += epitch;
-        dpitch=mpu.getRotationZ();
-        pid_d = Kp * epitch + Ki * ipitch + Kd * dpitch;
-
-
-// ================================================================
-// ===                        BALANCING                         ===
-// ================================================================
-
-        K_p_p=0.5;
-        K_i_p=0;
-        K_d_p=0;
-        epitch = tpitch - pitch + pid_d;
-        ipitch += epitch;
-        dpitch=mpu.getRotationZ();
-        pid_p = Kp * epitch + Ki * ipitch + Kd * dpitch;
-         
-        
-        m1.setSpeed(pid_p-pid_y);
-        m2.setSpeed(pid_p+pid_y);
-        m1.runSpeed();
-        m2.runSpeed();
-   
-// SOURCE: http://er2c.pens.ac.id/pub/ies2015-movcascadedpid.pdf
-      
-   
-        }
+           }
+     
     }
