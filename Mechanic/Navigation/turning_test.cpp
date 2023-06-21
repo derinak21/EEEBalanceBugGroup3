@@ -501,6 +501,15 @@ void add_node(){
                 path_angle = PI;
             }
         }
+
+        //change direction of rover to direction of sensor on the right of rover
+        if (path_angle > PI/2){
+            path_angle = path_angle - 1.5*PI;
+        }
+        else {
+            path_angle = path_angle + 0.5*PI;
+        }
+
         angles[path_angle] = false;
 
         min_node_angle = 360;
@@ -614,7 +623,7 @@ void loop() {
     nodeflag = nodeflag_left || nodeflag_right;
 
     //take reading from the sensor in front
-    if (dis_front){
+    if (nodeflag_right){
         path_ahead = true;
     }
 
@@ -860,3 +869,4 @@ void loop() {
 //To-Do: 
 //move is_node function here
 //add code to add the path the rover comes from here
+//add dead end case

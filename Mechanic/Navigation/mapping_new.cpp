@@ -8,7 +8,7 @@
 
 #include "MPU6050_6Axis_MotionApps20.h"
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-    #include "Wire.h"
+#include "Wire.h"
 #endif
 
 #define dirPin 14
@@ -59,6 +59,7 @@ std::vector<float> position_b1(2, 0.0);
 std::vector<float> position_b2(2, 0.0);
 float position_p1; 
 float position_p2;
+float position_p; 
 float wheelc;   //CALCULATE WHEEL CIRCUMFERENCE AND ENTER IT HERE
 float displacement;
 float yaw;
@@ -68,9 +69,8 @@ bool node;
 bool nodeoptions;
 float gradient1;
 float gradient2;
-
-bool back=0;
-//float position[3] = {0.0, 0.0, 0.0};
+float min_node_angle = 360;
+float max_node_angle = -360;
 
 float d0 = 0.58; //DEFINE THIS
 float d1 = 0.075; //DEFINE THIS
@@ -80,20 +80,34 @@ float theta_2 = 0;
 
 float de_init_yaw;
 float initial_yaw;
+float target_yaw;
 char command; 
-int x, y;
-bool turn =0;
+float x, y;
+bool turn;
 int camera_command;
 int direction;
 char color;
 std::vector<char> initbeacons;
 std::map<char, std::pair<float, float>> beaconMap;
 std::unordered_map<size_t, std::unordered_map<int, bool>> nodes;
+std::unordered_map<float, bool> angles;
+int node_count = 0;
 
-//ultrasonic readings
-int dis_left, dis_right;
-unsigned int us1, us2;
+int wscount = 0;
 
+//ultrasonic sensors
+int dis_left;
+int dis_right;
+unsigned int us1;
+unsigned int us2;
+int turning_count = 0;
+
+int node_count_left = 0;
+int node_count_right = 0;
+int current_node; // keep track of next node the rover is going to when finding_node is true
+std::unordered_map<size_t, std::vector<std::pair<size_t, float>>> adjacent_nodes;//float stores the direction to value node if rover is at key node
+std::unordered_map<size_t, bool> explored_nodes;
+std::vector<size_t> tmp_coord;
 // ================================================================
 // ===                          FLAGS                           ===
 // ================================================================
@@ -101,6 +115,8 @@ bool beacon_flag_1 = false;
 bool beacon_flag_2 = false; 
 bool check_node = false;
 bool nodeflag = false; 
+//bool nodeflag_left = false;
+//bool nodeflag_right = false;
 bool first_time_node = false; 
 bool initialisation=true;
 bool initialbeacon=true;
@@ -108,6 +124,23 @@ bool beaconposition=true;
 bool beacon_flag_fpga = false; 
 bool de_flag=false;
 bool done_checking=false;
+bool is_path = false;
+bool forward_path = false;
+bool path_ahead = false;
+
+bool nodeflag_left = false;
+bool nodeflag_right = false;
+bool nodeflag_front = false;
+//bool nodeflag = false;
+bool turning = false;
+bool one_round = false;
+bool left_turn = false;
+bool right_turn = false;
+bool finding_target_yaw = false;
+bool to_left = false;
+bool to_right = false;
+
+bool finding_node = false;//true when the rover is on the way to a know node
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -122,9 +155,9 @@ void dmpDataReady() {
 // ================================================================
 
 #define RXD2 16
-#define TXD2 17
+#define TXD2 26
 byte reading;
-//unsigned int fpga_r;
+unsigned int fpga_r;
 inline size_t key(int i,int j) {return (size_t) i << 32 | (unsigned int) j;}
 
 
@@ -136,12 +169,36 @@ inline size_t key(int i,int j) {return (size_t) i << 32 | (unsigned int) j;}
 //!!!!!!!!!!!!!!!!!!!!
 #define TRIGGER_PIN  18  
 #define ECHO_PIN     19  
-#define TRIGGER_PIN_2  12  
-#define ECHO_PIN_2     11  
+#define TRIGGER_PIN_2  17  
+#define ECHO_PIN_2     5  
 #define MAX_DISTANCE 200 
 
 NewPing sonar1(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
 NewPing sonar2(TRIGGER_PIN_2, ECHO_PIN_2, MAX_DISTANCE);
+
+
+// ================================================================
+// ===                    SETUP FOR SERVER                     ===
+// ================================================================
+
+// #define USE_WIFI_NINA         false
+// #define USE_WIFI101           false
+
+// #include <WiFiWebServer.h>
+// #include <WiFiHttpClient.h>
+// #include <ArduinoJson.h>
+
+// const char ssid[] = "ALINA";
+// const char pass[] = "02025509";
+// char serverAddress[] = "172.20.10.2";  // server address
+// int port = 3001;
+// WiFiClient           client;
+// WiFiWebSocketClient  wsClient(client, serverAddress, port);
+
+
+// ================================================================
+// ===                      MOTOR SETUP                     ===
+// ================================================================
 
 
 // ================================================================
@@ -166,7 +223,7 @@ using namespace websockets;
 WebsocketsClient client;
 bool connect;
 unsigned long lastConnectionTime = 0;
-const unsigned long connectionInterval = 30000;
+const unsigned long connectionInterval = 21000;
 unsigned long start;
 
 
@@ -208,6 +265,9 @@ void setup() {
     delay(1000);
     
     connect = client.connect(websockets_server_host, websockets_server_port, "/");
+    if (connect){
+      Serial.println("connected");
+    }
     while (!Serial); // wait for Leonardo enumeration, others continue immediately
     // initialize device
     Serial.println(F("Initializing I2C devices..."));
@@ -219,10 +279,10 @@ void setup() {
     Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
     // wait for ready
-    Serial.println(F("\nSend any character to begin DMP programming and demo: "));
-    while (Serial.available() && Serial.read()); // empty buffer
-    while (!Serial.available());                 // wait for data
-    while (Serial.available() && Serial.read()); // empty buffer again
+    // Serial.println(F("\nSend any character to begin DMP programming and demo: "));
+    // while (Serial.available() && Serial.read()); // empty buffer
+    // while (!Serial.available());                 // wait for data
+    // while (Serial.available() && Serial.read()); // empty buffer again
 
     // load and configure the DMP
     Serial.println(F("Initializing DMP..."));
@@ -294,60 +354,215 @@ void websocket_send(){
         jsonDocument["x_sll"] = position_ll2[0]*400/3.6+10;
         jsonDocument["y_sll"] = (3.6-position_ll2[1])*400/3.6;
 
-        jsonDocument["x_srl"] = position_ll2[0]*400/3.6+10;
-        jsonDocument["y_srl"] = (3.6-position_ll2[1])*400/3.6;
-        // Serial.println("Size of jsonDocument: ");
-        // size_t jsonSize = measureJsonPretty(jsonDocument);
-        // Serial.println(jsonSize);
+        jsonDocument["x_srl"] = position_rl2[0]*400/3.6+10;
+        jsonDocument["y_srl"] = (3.6-position_rl2[1])*400/3.6;
+        
         String output;  // Serialize the JSON document to a string
         serializeJson(jsonDocument, output);
                 
         Serial.println("Sending data ");
-        
-        Serial.println("debug c");
+        Serial.println("Sending data ");
+        Serial.println("Sending data ");
+        Serial.println("Sending data ");
+        Serial.println("Sending data ");
 
-        unsigned long start = millis();
+
+        // unsigned long start = millis();
         client.send(output);
-        unsigned long end = millis();
-        unsigned long time = end - start;
-        Serial.println(end-start);
-        // if(time >= 100){
-        //   Serial.println("fail");
-        //   client.connect(websockets_server_host, websockets_server_port, "/");
-        //   delay(500);
-        // }
-        Serial.println("debug a");
-        jsonDocument.clear();
-        Serial.println("debug b");
-        // check if a message is available to be received
-        // int messageSize = client.parseMessage();
-
         // unsigned long end = millis();
-        // unsigned long rtt = end - start;
+        // Serial.println(end-start);
+        jsonDocument.clear();
 
-        // // Print the RTT
-        // // Serial.print("RTT: ");
-        // // Serial.print(rtt);
-        // // Serial.println(" ms");
-        
-        // if (messageSize > 0)
-        // {
-        // Serial.println("Received a message:");
-        // //Serial.println(wsClient.readString());
-        // }
+
     } 
-    
     else{
       Serial.println("disconnected");
-      
-      while(!client.available()){
-        client.connect(websockets_server_host, websockets_server_port, "/");
-        delay(500);
-      };
+
     }
+    
 }
 
 
+void motion(char command){
+    if(command=='f'){   //TURN FORWARD BY 1 STEP
+            digitalWrite(dirPin, HIGH);
+            digitalWrite(dirPin2, LOW);
+            digitalWrite(stepPin, HIGH);
+            digitalWrite(stepPin2, HIGH);                   
+            delayMicroseconds(6000);                     
+            digitalWrite(stepPin, LOW);                 
+            digitalWrite(stepPin2, LOW);                   
+            delayMicroseconds(6000);
+            displacement=wheelc/200;
+            position[0]+=displacement*cos(yaw);
+            position[1]+=displacement*sin(yaw);   
+             
+      }
+      else if(command=='b'){  //TURN BACK BY 1 STEP
+          digitalWrite(dirPin, LOW);
+          digitalWrite(dirPin2, HIGH);
+          digitalWrite(stepPin, HIGH);
+          digitalWrite(stepPin2, HIGH);           
+          delayMicroseconds(2000);                     
+          digitalWrite(stepPin, LOW);                 
+          digitalWrite(stepPin2, LOW);                   
+          delayMicroseconds(2000); 
+          displacement=wheelc/200;
+          position[0]-=displacement*cos(yaw);
+          position[1]-=displacement*sin(yaw);          
+        
+      }
+       else if(command=='l'){   //TURN LEFT BY 1 STEP
+            digitalWrite(dirPin, LOW);
+            digitalWrite(dirPin2, LOW);
+            digitalWrite(stepPin, HIGH);
+            digitalWrite(stepPin2, HIGH);                  
+            delayMicroseconds(6000);                     
+            digitalWrite(stepPin, LOW);                 
+            digitalWrite(stepPin2, LOW);                   
+            delayMicroseconds(6000);      
+          
+        }
+        
+        else if(command=='r'){   //TURN RIGHT BY 1 STEP
+              digitalWrite(dirPin, HIGH);
+              digitalWrite(dirPin2, HIGH);
+              digitalWrite(stepPin, HIGH);
+              digitalWrite(stepPin2, HIGH);                  
+              delayMicroseconds(6000);                     
+              digitalWrite(stepPin, LOW);                 
+              digitalWrite(stepPin2, LOW);                   
+              delayMicroseconds(6000);
+              
+        }
+
+        else if(command=='s'){  //STOP
+              digitalWrite(dirPin, HIGH);
+              digitalWrite(dirPin2, HIGH);
+              digitalWrite(stepPin, LOW);
+              digitalWrite(stepPin2, LOW);                  
+              delayMicroseconds(2000);                     
+              digitalWrite(stepPin, LOW);                 
+              digitalWrite(stepPin2, LOW);                   
+              delayMicroseconds(2000);
+        }
+}
+
+float find_target_yaw(float l_initial_yaw, std::unordered_map<float, bool> &l_angles){
+    std::unordered_map<float, bool>::iterator it;
+    
+    if (l_angles.size()==2){
+        for (auto it = l_angles.begin(); it != l_angles.end(); it++){
+            if (!(abs(it->first-yaw)>=(PI-0.26) && abs(it->first-yaw)<=(PI+0.26))){
+                return it->first;
+            }
+        }
+    }   
+    
+    else{
+        if (one_round || right_turn){
+            if (l_initial_yaw > 1.57 && l_initial_yaw < PI){
+                float max_angle = l_angles.begin()->first;
+                float min_angle = l_angles.begin()->first;
+                bool negative_exist = false;
+                for (it = l_angles; it != l_angles.end(); it++){
+                    if (l_angles[max_angle]==true){
+                        max_angle = it->first;
+                    }
+                    if (l_angles[min_angle]==true){
+                        min_angle = it->first;
+                    }
+                    if (it->first > max_angle && !it->second){
+                        max_angle = it->first;
+                    }
+                    if (it->first < min_angle && !it->second){
+                        min_angle = it->first;
+                    }
+                    if (it->first < 0 && !it->second){
+                        negative_exist = true;
+                    }
+                    else {
+                        positive_exist = true;
+                    }
+                }
+                if (negative_exist && l_angles[min_angle] == false){
+                    l_angles[min_angle] = true;
+                    return min_angle;
+                }
+                else if (l_angles[max_angle] == false){
+                    l_angles[max_angle] = true;
+                    return max_angle;
+                }
+            }
+            else{
+                float max_angle = l_angles.begin()->first;
+                for (it = l_angles.begin(); it != l_angles.end(); it++){
+                    if (l_angles[max_angle]==true){
+                        max_angle = it->first;
+                    }
+                    if (it->first > max_angle && !it->second){
+                        max_angle = it->first;
+                    }
+                }
+                if (l_angles[max_angle]==false){
+                    l_angles[max_angle] = true;
+                    return max_angle;
+                }
+            }
+            
+        }
+        else{    
+            float max_angle = l_angles.begin()->first;
+            for (it = l_angles.begin(); it != l_angles.end(); it++){
+                if (it->first > (initial_yaw-0.07) && it->first < (initial_yaw+0.07)){
+                      it->second = true;
+                      return it->first;
+                  }
+                if (l_angles[max_angle]==true){
+                    max_angle = it->first;
+                }
+                if (it->first > max_angle && !it->second){
+                    max_angle = it->first;
+                }
+            }
+            if (l_angles[max_angle]==false){
+                l_angles[max_angle] = true;
+                return max_angle;
+            }  
+        }
+    }
+
+    //will reach this point when all paths at this node has been visited
+    
+    std::vector<int> node_coord = is_node(x,y,nodes);
+    size_t tmp = key(node_coord[0], node_coord[1]);
+    std::unordered_map<size_t, std::vector<size_t>>::iterator it2;
+    it2 = adjacent_nodes.find(tmp);
+    std::vector<size_t> tmp_nodes = it2->second;
+    std::unordered_map<size_t, bool>::iterator it3;
+    for (int i = 0; i<tmp_nodes.size(); i++){
+        it3 = explored_nodes.find(tmp_nodes[i].first);
+        if (!it3->second){
+            return tmp_nodes[i].second;//to find direction to next node not fully explored
+        }
+    }
+
+    //when all adjacent node is fully explored too
+    for (it3 = explored_nodes.begin(); it3!=explored_nodes.end(); it3++){
+        if (!it3->second){
+            tmp_coord = shortest_path(tmp, it3->first);//need to return a list of nodes to visit including the target node
+            //going to tmp_coord from tmp
+            for (int i = 0; i<tmp_nodes.size(); i++){
+                if (tmp_nodes[i].first == tmp_coord[0]){
+                    finding_node = true;
+                    current_node = 0;//keep track of the node that the rover is on the way to
+                    return tmp_nodes[i].second;
+                }
+            }            //need to figure out a way to store all nodes to be visited
+        }
+    }
+    
+}
 
 
 
@@ -364,13 +579,13 @@ void loop() {
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            Serial.print("ypr\t");
+            // Serial.print("ypr\t");
             
-            Serial.print(ypr[0] * 180/M_PI);
-            Serial.print("\t");
-            Serial.print(ypr[1] * 180/M_PI);
-            Serial.print("\t");
-            Serial.println(ypr[2] * 180/M_PI);
+            // Serial.print(ypr[0] * 180/M_PI);
+            // Serial.print("\t");
+            // Serial.print(ypr[1] * 180/M_PI);
+            // Serial.print("\t");
+            // Serial.println(ypr[2] * 180/M_PI);
             yaw=ypr[0];
             pitch=ypr[1];
             roll=ypr[2];
@@ -385,12 +600,12 @@ void loop() {
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
             mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-            Serial.print("aworld\t");
-            Serial.print(aaWorld.x);
-            Serial.print("\t");
-            Serial.print(aaWorld.y);
-            Serial.print("\t");
-            Serial.println(aaWorld.z);
+            // Serial.print("aworld\t");
+            // Serial.print(aaWorld.x);
+            // Serial.print("\t");
+            // Serial.print(aaWorld.y);
+            // Serial.print("\t");
+            // Serial.println(aaWorld.z);
         #endif
     }
 // ================================================================
@@ -421,97 +636,16 @@ void loop() {
 // ================================================================
 // ===                      READ FROM sensor                ===
 // ================================================================
-  us1 = sonar1.ping();
-  dis_left = sonar1.convert_cm(us1);
-  us2 = sonar2.ping();
-  dis_right = sonar2.convert_cm(us2);
+  // us1 = sonar1.ping();
+  // dis_left = sonar1.convert_cm(us1);
+  // us2 = sonar2.ping();
+  // dis_right = sonar2.convert_cm(us2);
 
+  // Serial.print("dis_left ");
+  // Serial.println(dis_left);
 
-// ================================================================
-// ===                      MOTION CODE                       ===
-// ================================================================
-
-      
-      //PIN IS LEFT AND PIN2 IS RIGHT MOTOR
-
-if (Serial.available()){ // empty buffer
-      char command = Serial.read();
-      
-      if(command=='w'){
-        Serial.println("here");
-          for (int i = 0; i <30; i++){
-            digitalWrite(dirPin, HIGH);
-            digitalWrite(dirPin2, LOW);
-            digitalWrite(stepPin, HIGH);
-            digitalWrite(stepPin2, HIGH);                   
-            delayMicroseconds(6000);                     
-            digitalWrite(stepPin, LOW);                 
-            digitalWrite(stepPin2, LOW);                   
-            delayMicroseconds(6000);
-            stepcount++;
-            turn=0;     
-            back=0; 
-            displacement=wheelc/200;
-            position[0]+=displacement*cos(yaw);
-            position[1]+=displacement*sin(yaw);   
-          }   
-          
-      }
-      if(command=='s'){
-        for (int i = 0; i <30; i++){
-
-          digitalWrite(dirPin, LOW);
-          digitalWrite(dirPin2, HIGH);
-          digitalWrite(stepPin, HIGH);
-          digitalWrite(stepPin2, HIGH);           
-          delayMicroseconds(6000);                     
-          digitalWrite(stepPin, LOW);                 
-          digitalWrite(stepPin2, LOW);                   
-          delayMicroseconds(6000); 
-          stepcount++; 
-          turn=0;
-          back=1; 
-          displacement=wheelc/200;
-          position[0]-=displacement*cos(yaw);
-          position[1]-=displacement*sin(yaw);          
-        }
-      }
-        //ASSUME THAT PIN IS LEFT AND PIN2 IS CONNECTED TO RIGHT MOTOR
-        if(command=='a'){
-          for (int i = 0; i <30; i++){
-            digitalWrite(dirPin, HIGH);
-            digitalWrite(dirPin2, LOW);
-            digitalWrite(stepPin, LOW);
-            digitalWrite(stepPin2, HIGH);                  
-            delayMicroseconds(6000);                     
-            digitalWrite(stepPin, LOW);                 
-            digitalWrite(stepPin2, LOW);                   
-            delayMicroseconds(6000); 
-            turn=1; 
-            back=0; 
-         
-          }
-        }
-        
-        if(command=='d'){
-            for (int i = 0; i <30; i++){
-              digitalWrite(dirPin, HIGH);
-              digitalWrite(dirPin2, LOW);
-              digitalWrite(stepPin, HIGH);
-              digitalWrite(stepPin2, LOW);                  
-              delayMicroseconds(6000);                     
-              digitalWrite(stepPin, LOW);                 
-              digitalWrite(stepPin2, LOW);                   
-              delayMicroseconds(6000);
-              turn=1;
-              back=0; 
-          
-            }
-        }
-        
-        }
-
-
+  // Serial.print("dis_right ");
+  // Serial.println(dis_right);
 // ================================================================
 // ===               GET WHITE LED POSITION                      === 
 // ================================================================
@@ -535,11 +669,19 @@ if (Serial.available()){ // empty buffer
       position_rl[0] = 4;
     }
     position_rl[1]=position[1]+d0*sin(yaw)+(position_p2-40)*cos(yaw)*0.545/80; 
+    Serial.println("disleft");
+    Serial.println(dis_left);
+    Serial.println("disright");
+    Serial.println(dis_right);
+    // if (dis_left >4 && dis_left <26 ){
+    //   position_ll2[0]=position[0]+d1*cos(yaw)+dis_left*sin(yaw)/100;
+    //   position_ll2[1]=position[1]+d1*sin(yaw)+dis_left*cos(yaw)/100;
+    // }
 
-    if (dis_left >4 && dis_left <26 ){
-      position_ll2[0]=position[0]+d1*cos(yaw)+dis_left*sin(yaw)/100;
-      position_ll2[1]=position[1]+d1*sin(yaw)+dis_left*cos(yaw)/100;
-    }
+    // if (dis_right >4 && dis_right <26 ){
+    //   position_rl2[0]=position[0]+d1*cos(yaw)-dis_right*sin(yaw)/100;
+    //   position_rl2[1]=position[1]+d1*sin(yaw)-dis_right*cos(yaw)/100;
+    // }
 
     Serial.print("pos rly");
     Serial.println(position_rl[1]);
@@ -560,14 +702,260 @@ if (Serial.available()){ // empty buffer
 // ===               SEND WHITE LED AND ROVER POSITION          ===
 // ================================================================
     
-  websocket_send();
-  if ((millis() - lastConnectionTime >= connectionInterval)) {
-    start = millis();
-    client.connect(websockets_server_host, websockets_server_port, "/");
-    lastConnectionTime = millis();
-    Serial.println("reconnect");
-    Serial.println(lastConnectionTime-start);
-  }
-  
-  delay(500);
+
+  // if ((millis() - lastConnectionTime >= connectionInterval)) {
+  //   start = millis();
+  //   client.connect(websockets_server_host, websockets_server_port, "/");
+  //   lastConnectionTime = millis();
+  //   Serial.println("reconnect");
+  //   Serial.println(lastConnectionTime-start);
+  // }
+
+  angles[1.54] = false;
+    //angles[3.14] = false;
+
+    command = '*';
+
+    count_reading = 0;
+    while(Serial2.available() && (count_reading != 14)) {
+        Serial.print("fpga");
+        reading = Serial2.read();  
+        Serial.println(reading,HEX);
+        if (reading == 2) {
+          to_left = true;
+          break;
+        }
+        else {
+          to_left = false;
+        }
+        if (reading == 3){
+          to_right = true;
+          break;
+        }
+        else{
+          to_right = false;
+        }
+        count_reading += 1;
+    }  
+
+  if (finding_target_yaw){
+    angles[-3.1] = false;
+        if ((target_yaw < -3.1 && target_yaw >=-3.14) || (target_yaw > 3.1 && target_yaw <= 3.14)){
+            if (yaw < -3.09 || yaw > 3.09){
+                //when target_yaw is reached, go forward by 20 steps to avoid checking node again
+                finding_target_yaw = false;
+                client.connect(websockets_server_host, websockets_server_port, "/");
+                lastConnectionTime = millis();
+                for (int i = 0; i < 300; i++){
+                    motion('f');
+                    // Serial.println("run here");
+                    // if (wscount == 10){
+                    //   us1 = sonar1.ping();
+                    //   dis_left = sonar1.convert_cm(us1);
+                    //   us2 = sonar2.ping();
+                    //   dis_right = sonar2.convert_cm(us2);
+                    //   if (dis_left >4 && dis_left <26 ){
+                    //     position_ll2[0]=position[0]+d1*cos(yaw)+dis_left*sin(yaw)/100;
+                    //     position_ll2[1]=position[1]+d1*sin(yaw)+dis_left*cos(yaw)/100;
+                    //   }
+
+                    //   if (dis_right >4 && dis_right <26 ){
+                    //     position_rl2[0]=position[0]+d1*cos(yaw)-dis_right*sin(yaw)/100;
+                    //     position_rl2[1]=position[1]+d1*sin(yaw)-dis_right*cos(yaw)/100;
+                    //   }
+                    //   websocket_send();
+                    //   wscount = 0;
+                    // }
+                    // wscount +=1;
+                }
+            }
+            else if (target_yaw > yaw){
+              motion('r');
+            }
+            else{
+                
+              motion('l');
+                
+            }
+        }
+        else {
+            if (yaw < (target_yaw+0.025) && yaw > (target_yaw-0.025)){
+                //when target_yaw is reached, go forward by 20 steps to avoid checking node again
+                finding_target_yaw = false;
+                // client.connect(websockets_server_host, websockets_server_port, "/");
+                // lastConnectionTime = millis();
+                // websocket_send();
+                for (int i = 0; i < 300; i++){
+                    motion('f');
+                    
+                    // if (i %10 == 0){
+                    //   Serial.println("run here");
+                      
+                    //   us1 = sonar1.ping();
+                    //   dis_left = sonar1.convert_cm(us1);
+                    //   us2 = sonar2.ping();
+                    //   dis_right = sonar2.convert_cm(us2);
+                    //   if (dis_left >4 && dis_left <26 ){
+                    //     position_ll2[0]=position[0]+d1*cos(yaw)+dis_left*sin(yaw)/100;
+                    //     position_ll2[1]=position[1]+d1*sin(yaw)+dis_left*cos(yaw)/100;
+                    //   }
+
+                    //   if (dis_right >4 && dis_right <26 ){
+                    //     position_rl2[0]=position[0]+d1*cos(yaw)-dis_right*sin(yaw)/100;
+                    //     position_rl2[1]=position[1]+d1*sin(yaw)-dis_right*cos(yaw)/100;
+                    //   }
+                    //   // wscount = 0;
+                    //   websocket_send();
+                    // }
+                    // wscount += 1;
+                }
+                //angles[-3.1] = false;
+            }
+            else if (target_yaw > yaw){
+                for (int i = 0; i < 10; i++){
+                    motion('r');
+                }
+            }
+            else{
+                for (int i = 0; i < 10; i++){
+                    motion('l');
+                }
+            }
+        }
+        
+    }
+
+    else if (to_left && !turning){
+      Serial.println("to_left");
+      motion('l');
+      //to_left = false;
+      delay(40);
+    }
+
+    else if (to_right && !turning){
+      Serial.println("to_right");
+      motion('r');
+      //to_right = false;
+      delay(40);
+    }
+
+    else {
+      //check ultrasonic sensor readings to determine whether it is a node     
+      us1 = sonar1.ping();
+      dis_left = sonar1.convert_cm(us1);
+      us2 = sonar2.ping();
+      dis_right = sonar2.convert_cm(us2);
+
+      if (dis_left >4 && dis_left <26 ){
+        position_ll2[0]=position[0]+d1*cos(yaw)+dis_left*sin(yaw)/100;
+        position_ll2[1]=position[1]+d1*sin(yaw)+dis_left*cos(yaw)/100;
+      }
+
+      if (dis_right >4 && dis_right <26 ){
+        position_rl2[0]=position[0]+d1*cos(yaw)-dis_right*sin(yaw)/100;
+        position_rl2[1]=position[1]+d1*sin(yaw)-dis_right*cos(yaw)/100;
+      }
+
+      if (dis_left < 27 && dis_left > 3){
+        node_count_left = 0;
+        }
+        else{
+            node_count_left += 1;
+        }
+
+    if (node_count_left == 30){
+        nodeflag_left = true;
+        node_count_left = 0;
+    }
+
+    //to determine whether there is a node on the right
+    if (dis_right < 27 && dis_right > 3){
+        node_count_right = 0;
+        }
+        else{
+            node_count_right += 1;
+        }
+
+    if (node_count_right == 30){
+        nodeflag_right = true;
+        node_count_right = 0;
+    }
+
+    //to determine whether current position is a node
+    nodeflag = nodeflag_left || nodeflag_right;
+      // Serial.print("nodeflag ");
+      // Serial.print(dis_left);
+      // Serial.print(" ");
+      // Serial.println(nodeflag_left);
+
+      // Serial.print("yaw");
+      // Serial.println(yaw);
+
+      // Serial.print("turning 1:");
+      // Serial.println(turning);
+
+      if (nodeflag_right){
+        path_ahead = true;
+      }
+
+      if (nodeflag && !turning && path_ahead){
+          forward_path = true;
+      }
+
+      std::vector<int> node_coord = is_node(x,y,nodes);
+
+      if (nodeflag && !turning){
+        turning = true;
+        initial_yaw = yaw;
+        for (int i = 0; i<130; i++){//was 110
+          motion('f');
+        //   if (wscount == 10){
+        //     us1 = sonar1.ping();
+        //     dis_left = sonar1.convert_cm(us1);
+        //     us2 = sonar2.ping();
+        //     dis_right = sonar2.convert_cm(us2);
+        //     if (dis_left >4 && dis_left <26 ){
+        //       position_ll2[0]=position[0]+d1*cos(yaw)+dis_left*sin(yaw)/100;
+        //       position_ll2[1]=position[1]+d1*sin(yaw)+dis_left*cos(yaw)/100;
+        //     }
+
+        //     if (dis_right >4 && dis_right <26 ){
+        //       position_rl2[0]=position[0]+d1*cos(yaw)-dis_right*sin(yaw)/100;
+        //       position_rl2[1]=position[1]+d1*sin(yaw)-dis_right*cos(yaw)/100;
+        //     }
+        //   websocket_send();
+        //   wscount = 0;
+        // }
+        // wscount += 1;
+        }
+      }
+
+      else if (turning_count > 100 && turning && yaw >= (initial_yaw - 0.03) && yaw < (initial_yaw-0.015)){
+        // for (int i = 0; i<300; i++){
+        //   motion('f');
+        // }
+        turning = false;
+        finding_target_yaw = true;
+        target_yaw = find_target_yaw(initial_yaw, angles);
+        // Serial.print("target yaw");
+        // Serial.println(target_yaw);
+        
+      }
+
+      else if (turning) {
+        motion('r');
+        turning_count += 1;
+      }
+      else{
+        motion('f');
+        // if (wscount == 10){
+        //   websocket_send();
+        //   wscount = 0;
+        // }
+      }
+
+    }
+  //wscount += 1;
+
+  //delay(100);
 }
