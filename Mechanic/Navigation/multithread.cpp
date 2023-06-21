@@ -291,11 +291,8 @@ void websocket_send(){
         String output;  // Serialize the JSON document to a string
         serializeJson(jsonDocument, output);
                 
-        Serial.println("Sending data ");
-        Serial.println("Sending data ");
-        Serial.println("Sending data ");
-        Serial.println("Sending data ");
-        Serial.println("Sending data ");
+        Serial.print(" Sending data ");
+
 
 
         // unsigned long start = millis();
@@ -321,7 +318,7 @@ void websocket_send(){
 }
 void codeForWS( void * parameter ) {
    for (;;) {
-      Serial.print("                                                            Code is running on Core: ");Serial.println( xPortGetCoreID());
+
       websocket_send();
       sensor_reading();
    }
@@ -479,10 +476,10 @@ void motion(char command){
             digitalWrite(dirPin2, LOW);
             digitalWrite(stepPin, HIGH);
             digitalWrite(stepPin2, HIGH);                   
-            delayMicroseconds(5000);                     
+            delayMicroseconds(6000);                     
             digitalWrite(stepPin, LOW);                 
             digitalWrite(stepPin2, LOW);                   
-            delayMicroseconds(5000);
+            delayMicroseconds(6000);
             displacement=wheelc/200;
             Serial.print(" f ");
             // dt=2;
@@ -622,7 +619,7 @@ float find_target_yaw(float l_initial_yaw, std::unordered_map<float, bool> &l_an
                     if (l_angles[max_angle]==true){
                         max_angle = it->first;
                     }
-                    if (it->first > max_angle && !it->second){
+                    if ((it->first > max_angle) && (!it->second)){
                         max_angle = it->first;
                     }
                 }
@@ -829,16 +826,16 @@ void loop() {
     sensor_left = false;
   }
 
-  if (!turning && !finding_target_yaw && dis_left < 35 && dis_left > 3 && dis_right < 35 && dis_right > 3){
-      if (dis_left>dis_right+2){
-        motion('l');
-        motion('l');
-      }
-      else if (dis_left < dis_right-2){
-        motion('r');
-        motion('r');
-      }
-  }
+  // if (!turning && !finding_target_yaw && dis_left < 35 && dis_left > 3 && dis_right < 35 && dis_right > 3){
+  //     if (dis_left>dis_right+4){
+  //       motion('l');
+  //       //motion('l');
+  //     }
+  //     else if (dis_left < dis_right-4){
+  //       motion('r');
+  //       //motion('r');
+  //     }
+  // }
         
 
   //  Serial.print("dis_left ");
@@ -889,7 +886,7 @@ void loop() {
                 right_turn = false;
                 // client.connect(websockets_server_host, websockets_server_port, "/");
                 // lastConnectionTime = millis();
-                for (int i = 0; i < 270; i++){
+                for (int i = 0; i < 300; i++){
                     motion('f');
                     update_json_file();
                 }
@@ -910,7 +907,7 @@ void loop() {
                 one_round = false;
                 left_turn = false;
                 right_turn = false;
-                for (int i = 0; i < 270; i++){
+                for (int i = 0; i < 300; i++){
                     motion('f');
                     update_json_file();
                 }
@@ -980,20 +977,20 @@ void loop() {
       //   position_rl2[1]=position[1]+d1*sin(yaw)-dis_right*cos(yaw)/100;
       // }
 
-      if (dis_left < 35 && dis_left > 3){
+      if (dis_left < 27 && dis_left > 3){
         node_count_left = 0;
         }
         else{
             node_count_left += 1;
         }
 
-    if (node_count_left >= 20){
+    if (node_count_left >= 5){
         nodeflag_left = true;
         node_count_left = 0;
     }
 
     //to determine whether there is a node on the right
-    if (dis_right < 35 && dis_right > 1){
+    if (dis_right < 27 && dis_right > 1){
         node_count_right = 0;
         path_right_count += 1;
         
@@ -1004,15 +1001,10 @@ void loop() {
             not_forward_path = false;
         }
 
-    if (node_count_right == 20){
+    if (node_count_right == 5){
         nodeflag_right = true;
         node_count_right = 0;
         path_right = true;
-    }
-
-    if (path_right_count==20){
-      path_right = false;
-      not_forward_path = true;
     }
 
     //to determine whether current position is a node
@@ -1021,8 +1013,10 @@ void loop() {
       // Serial.print(" ");
       Serial.print(nodeflag);
 
-      Serial.print("dis_left");
+      Serial.print(" dis_left ");
       Serial.print(dis_left);
+      Serial.print(" dis_right ");
+      Serial.print(dis_right);
 
       // Serial.print("yaw");
       // Serial.println(yaw);
@@ -1035,8 +1029,8 @@ void loop() {
       // }
       //Serial.println(dis_right);
       std::vector<int> node_coord = is_node(x,y,nodes);
-      Serial.print ("is_node return: ");
-      Serial.print(node_coord[1]);
+      // Serial.print ("is_node return: ");
+      // Serial.print(node_coord[1]);
       
       if (nodeflag && node_coord[1]==555){
         //Serial.println("new_node");
@@ -1045,20 +1039,27 @@ void loop() {
             turning = true;
             initial_yaw = yaw;
             add_node_back(initial_yaw);
+            Serial.print(" ndr ");
+            Serial.print(node_count_right);
+            Serial.print(" ndl ");
+            Serial.print(node_count_left);
             if (nodeflag_left && nodeflag_right){
                 //turn 360 degree
                 one_round = true;
+                Serial.print(" debug a ");
                 add_node_left(initial_yaw);
                 add_node_right(initial_yaw);
             }
             else if (nodeflag_left){
                 //turn 180 degree to the left
                 left_turn = true;
+                Serial.print(" debug b ");
                 add_node_left(initial_yaw);
             }
             else if (nodeflag_right){
                 //turn 180 degree to the right
                 right_turn = true;
+                Serial.print(" debug c ");
                 add_node_right(initial_yaw);
             }
             for (int i = 0; i<100; i++){//was 110, 130
@@ -1110,12 +1111,12 @@ void loop() {
         update_json_file();
       }
     }
-    if (is_path){
-      Serial.print("is_path true ");
-    }
-    else{
-      Serial.print("is_path false ");
-    }
+    // if (is_path){
+    //   Serial.print("is_path true ");
+    // }
+    // else{
+    //   Serial.print("is_path false ");
+    // }
     Serial.print("x: ");
     Serial.print(position[0]);
     Serial.print("y: ");
