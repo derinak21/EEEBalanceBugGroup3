@@ -118,7 +118,6 @@ std::vector<size_t> tmp_coord;
 // ================================================================
 bool beacon_flag_1 = false; 
 bool beacon_flag_2 = false; 
-bool check_node = false;
 bool nodeflag = false; 
 //bool nodeflag_left = false;
 //bool nodeflag_right = false;
@@ -217,7 +216,7 @@ using namespace websockets;
 WebsocketsClient client;
 bool connect;
 unsigned long lastConnectionTime = 0;
-const unsigned long connectionInterval = 21000;
+const unsigned long connectionInterval = 20000;
 unsigned long start;
 
 
@@ -313,14 +312,19 @@ void websocket_send(){
       Serial.println("disconnected");
 
     }
-    delay(10);
+    delay(50);
 
 }
 void codeForWS( void * parameter ) {
+  int count = 0;
    for (;;) {
-
-      websocket_send();
-      sensor_reading();
+     sensor_reading();
+      // if (count == 10){
+        websocket_send();
+      //   count = 0;
+      // }
+      // count++;
+      
    }
 }
 
@@ -740,6 +744,52 @@ void add_node_back(float node_angle){
     angles[path_angle] = true;
 }
 
+void check_node(){
+  if (dis_left < 27 && dis_left > 3){
+        node_count_left = 0;
+        }
+        else{
+            node_count_left += 1;
+        }
+
+    if (node_count_left >= 20){
+        nodeflag_left = true;
+        node_count_left = 0;
+    }
+
+    //to determine whether there is a node on the right
+    if (dis_right < 27 && dis_right > 1){
+        node_count_right = 0;
+        path_right_count += 1;
+        
+        }
+        else{
+            node_count_right += 1;
+            path_right_count = 0;
+            not_forward_path = false;
+        }
+
+    if (node_count_right == 20){
+        nodeflag_right = true;
+        node_count_right = 0;
+        path_right = true;
+    }
+
+}
+
+void correct_direction(){
+  if (dis_left < 35 && dis_left > 3 && dis_right < 35 && dis_right > 3){
+      if (dis_left>(dis_right+4)){
+        motion('l');
+        //motion('l');
+      }
+      else if (dis_left < (dis_right-4)){
+        motion('r');
+        //motion('r');
+      }
+  }
+}
+
 
 void loop() {
   //Serial.println("void loop");
@@ -889,6 +939,7 @@ void loop() {
                 for (int i = 0; i < 300; i++){
                     motion('f');
                     update_json_file();
+                    correct_direction();
                 }
             }
             else if (target_yaw > yaw){
@@ -910,6 +961,7 @@ void loop() {
                 for (int i = 0; i < 300; i++){
                     motion('f');
                     update_json_file();
+                    correct_direction();
                 }
                 //angles[-3.1] = false;
             }
@@ -937,6 +989,7 @@ void loop() {
         for (int i = 0; i<20; i++){
           motion('f');
           update_json_file();
+          correct_direction();
         }
       }
     }
@@ -951,6 +1004,7 @@ void loop() {
         for (int i = 0; i<20; i++){
           motion('f');
           update_json_file();
+          correct_direction();
         }
       }
     }
@@ -976,37 +1030,8 @@ void loop() {
       //   position_rl2[0]=position[0]+d1*cos(yaw)-dis_right*sin(yaw)/100;
       //   position_rl2[1]=position[1]+d1*sin(yaw)-dis_right*cos(yaw)/100;
       // }
-
-      if (dis_left < 27 && dis_left > 3){
-        node_count_left = 0;
-        }
-        else{
-            node_count_left += 1;
-        }
-
-    if (node_count_left >= 5){
-        nodeflag_left = true;
-        node_count_left = 0;
-    }
-
-    //to determine whether there is a node on the right
-    if (dis_right < 27 && dis_right > 1){
-        node_count_right = 0;
-        path_right_count += 1;
-        
-        }
-        else{
-            node_count_right += 1;
-            path_right_count = 0;
-            not_forward_path = false;
-        }
-
-    if (node_count_right == 5){
-        nodeflag_right = true;
-        node_count_right = 0;
-        path_right = true;
-    }
-
+     check_node();
+      
     //to determine whether current position is a node
     nodeflag = nodeflag_left || nodeflag_right;
       Serial.print("nodeflag ");
@@ -1036,13 +1061,20 @@ void loop() {
         //Serial.println("new_node");
         //Serial.println(path_right);
           if (nodeflag && !turning){
+            
+            for (int i = 0; i<140; i++){//was 110, 130
+              motion('f');
+              update_json_file();
+              check_node();
+            }
+            look_ahead = true;
             turning = true;
             initial_yaw = yaw;
             add_node_back(initial_yaw);
-            Serial.print(" ndr ");
-            Serial.print(node_count_right);
-            Serial.print(" ndl ");
-            Serial.print(node_count_left);
+            Serial.print(" nfr ");
+            Serial.print(nodeflag_left);
+            Serial.print(" nfr ");
+            Serial.print(nodeflag_left);
             if (nodeflag_left && nodeflag_right){
                 //turn 360 degree
                 one_round = true;
@@ -1062,26 +1094,36 @@ void loop() {
                 Serial.print(" debug c ");
                 add_node_right(initial_yaw);
             }
-            for (int i = 0; i<100; i++){//was 110, 130
-              motion('f');
-              update_json_file();
-            }
-            look_ahead = true;
           }
 
           else if (look_ahead){
+            Serial.println("look ahead");
+            Serial.println(dis_left);
             if (initial_yaw > 0.5*PI){
-              if (yaw > (initial_yaw-1.5*PI-0.03) && yaw < (initial_yaw-1.5*PI+0.03) ){
-                if (dis_left < 38 && dis_left > 1){
-                  angles[initial_yaw] = false;  
+              if ((yaw > (initial_yaw-1.5*PI-0.2)) && (yaw < (initial_yaw-1.5*PI+0.2)) ){
+                int count = 0;
+                for (int i = 0; i< 8; i++){
+                  if (!(dis_left < 38 && dis_left > 1)){
+                    count ++;
+                  }
                 }
+                if (count == 8){
+                  add_node_left(yaw);  
+                }
+                
                 look_ahead = false;
               }
             }
             else{
-              if (yaw > (initial_yaw+0.5*PI-0.03) && yaw < (initial_yaw+0.5*PI+0.03) ){
-                if (dis_left < 38 && dis_left > 1){
-                  angles[initial_yaw] = false;
+              if ((yaw > (initial_yaw+0.5*PI+0.03)) && yaw < ((initial_yaw+0.5*PI+0.25)) ){//was 0.2
+                int count = 0;
+                for (int i = 0; i< 8; i++){
+                  if (!(dis_left < 38 && dis_left > 1)){
+                    count ++;
+                  }
+                }
+                if (count == 8){
+                  add_node_left(yaw);  
                 }
                 look_ahead = false;
               }
@@ -1089,7 +1131,7 @@ void loop() {
             motion('r');
           }
 
-          else if (turning_count > 100 && turning && yaw >= (initial_yaw - 0.03) && yaw < (initial_yaw)){
+          else if ((turning_count > 100) && turning && (yaw >= (initial_yaw - 0.03)) && (yaw < (initial_yaw))){
             turning = false;
             finding_target_yaw = true;
             Serial.print("before find target yaw");
@@ -1109,6 +1151,7 @@ void loop() {
       else{
         motion('f');
         update_json_file();
+        correct_direction();
       }
     }
     // if (is_path){
