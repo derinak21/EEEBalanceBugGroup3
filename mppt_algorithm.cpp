@@ -148,12 +148,12 @@ void mppt(i_in, v_in, p_in, i_last, v_last, p_last) {
    }
    else {
      if(delta_i > 0) {
-       open_loop=open_loop+0.004;
+       open_loop=open_loop-0.004; // by decreasing open_loop we in turn increase the duty cycle --> it is active low 
        open_loop=saturation(open_loop,0.99,dutyref);
        pwm_modulate(open_loop); 
      }
      else {
-       open_loop=open_lopp-0.04;
+       open_loop=open_lopp+0.04;
        open_loop=saturation(open_loop,0.99,dutyref);
        pwm_modulate(open_loop); 
      }
@@ -165,12 +165,12 @@ void mppt(i_in, v_in, p_in, i_last, v_last, p_last) {
    }
    else {
      if(delta_p/ delta_v > 0) {
-       open_loop=open_loop+0.04;
+       open_loop=open_loop-0.04;
        open_loop=saturation(open_loop,0.99,dutyref);
        pwm_modulate(open_loop); 
      }
      else {
-       open_loop=open_loop-0.04;
+       open_loop=open_loop+0.04;
        open_loop=saturation(open_loop,0.99,dutyref);
        pwm_modulate(open_loop); 
      }
