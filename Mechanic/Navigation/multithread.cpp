@@ -149,6 +149,8 @@ bool sensor_left = false;
 bool sensor_right = false;
 bool not_forward_path = false;
 bool look_ahead = false;
+bool stop_ahead = false;
+bool dead_end = false;
 
 bool finding_node = false;//true when the rover is on the way to a know node
 bool angle_offset = false;
@@ -261,7 +263,16 @@ void update_json_file(){
     }
 }
 
-
+void read_fpga(){
+  while(Serial2.available()) {
+    // Serial.print("fpga");
+    // Serial.print(reading);
+    reading = Serial2.read(); 
+    if (reading == 5){
+      stop_ahead = true;
+    }
+    }
+}
 
 // Websocket task function
 void websocket_send(){
@@ -320,7 +331,8 @@ void codeForWS( void * parameter ) {
    for (;;) {
      sensor_reading();
       // if (count == 10){
-        websocket_send();
+      websocket_send();
+      read_fpga();
       //   count = 0;
       // }
       // count++;
@@ -364,7 +376,8 @@ void setup() {
 
     Serial.begin(115200);   //MIGHT NEED TO CHANGE TO 9600
     WiFi.begin(ssid, pass);
-    while (WiFi.status() != WL_CONNECTED) {
+    //change to while
+    if (WiFi.status() != WL_CONNECTED) {
       delay(1000);
       Serial.println("Connecting to WiFi...");
     }
@@ -457,10 +470,10 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
     std::vector<int> coord(2,555);
     for (it = nodes.begin(); it!=nodes.end(); it++){
         int tmp_x = it->first>>32;
-        int tmp_y = ((it->first)<<32)>>32;
+        int tmp_y = it->first - (tmp_x<<32);
         int x_diff = tmp_x-position[0];
         int y_diff = tmp_y-position[1];
-        if ((x_diff>-0.2) && (x_diff<0.2) && (y_diff>-0.2) && (x_diff<0.2)){
+        if (((x_diff>-0.2) && (x_diff<0.2)) && ((y_diff>-0.2) && (y_diff<0.2))){
             coord[0] = tmp_x;
             coord[1] = tmp_y;
             return coord;
@@ -470,6 +483,7 @@ std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered
 }
 
 void motion(char command){
+  for (int i = 0; i<5; i++){
     if(command=='f'){   //TURN FORWARD BY 1 STEP
             // t=millis();
             // m1.setSpeed(50);
@@ -480,16 +494,17 @@ void motion(char command){
             digitalWrite(dirPin2, LOW);
             digitalWrite(stepPin, HIGH);
             digitalWrite(stepPin2, HIGH);                   
-            delayMicroseconds(6000);                     
+            delayMicroseconds(200);                     
             digitalWrite(stepPin, LOW);                 
             digitalWrite(stepPin2, LOW);                   
-            delayMicroseconds(6000);
+            delayMicroseconds(200);
             displacement=wheelc/200;
             Serial.print(" f ");
             // dt=2;
             // displacement=m1.speed()*dt;
             position[0]+=displacement*cos(yaw);
-            position[1]+=displacement*sin(yaw);   
+            position[1]+=displacement*sin(yaw); 
+      
              
       }
       else if(command=='b'){  //TURN BACK BY 1 STEP
@@ -501,10 +516,10 @@ void motion(char command){
           digitalWrite(dirPin2, HIGH);
           digitalWrite(stepPin, HIGH);
           digitalWrite(stepPin2, HIGH);           
-          delayMicroseconds(2000);                     
+          delayMicroseconds(800);                     
           digitalWrite(stepPin, LOW);                 
           digitalWrite(stepPin2, LOW);                   
-          delayMicroseconds(2000); 
+          delayMicroseconds(800); 
           displacement=wheelc/200;
           position[0]-=displacement*cos(yaw);
           position[1]-=displacement*sin(yaw); 
@@ -520,11 +535,11 @@ void motion(char command){
             digitalWrite(dirPin2, LOW);
             digitalWrite(stepPin, HIGH);
             digitalWrite(stepPin2, HIGH);                  
-            delayMicroseconds(6000);                     
+            delayMicroseconds(800);                     
             digitalWrite(stepPin, LOW);                 
             digitalWrite(stepPin2, LOW);                   
-            delayMicroseconds(6000); 
-            Serial.print(" l ");
+            delayMicroseconds(800); 
+            //Serial.print(" l ");
      
           
         }
@@ -538,10 +553,10 @@ void motion(char command){
               digitalWrite(dirPin2, HIGH);
               digitalWrite(stepPin, HIGH);
               digitalWrite(stepPin2, HIGH);                  
-              delayMicroseconds(6000);                     
+              delayMicroseconds(800);                     
               digitalWrite(stepPin, LOW);                 
               digitalWrite(stepPin2, LOW);                   
-              delayMicroseconds(6000);
+              delayMicroseconds(800);
               Serial.print(" r ");
 
         }
@@ -560,6 +575,7 @@ void motion(char command){
               digitalWrite(stepPin2, LOW);                   
               delayMicroseconds(2000);
         }
+  }
 }
 
 float find_target_yaw(float l_initial_yaw, std::unordered_map<float, bool> &l_angles){
@@ -745,8 +761,11 @@ void add_node_back(float node_angle){
 }
 
 void check_node(){
-  if (dis_left < 27 && dis_left > 3){
+  if (dis_left < 32 && dis_left > 3){
         node_count_left = 0;
+        if (!turning){
+        nodeflag_left = false;
+          }
         }
         else{
             node_count_left += 1;
@@ -758,10 +777,12 @@ void check_node(){
     }
 
     //to determine whether there is a node on the right
-    if (dis_right < 27 && dis_right > 1){
+    if (dis_right < 32 && dis_right > 1){
         node_count_right = 0;
         path_right_count += 1;
-        
+        if (!turning){
+        nodeflag_right = false;
+        }
         }
         else{
             node_count_right += 1;
@@ -769,7 +790,7 @@ void check_node(){
             not_forward_path = false;
         }
 
-    if (node_count_right == 20){
+    if (node_count_right >= 20){
         nodeflag_right = true;
         node_count_right = 0;
         path_right = true;
@@ -779,11 +800,11 @@ void check_node(){
 
 void correct_direction(){
   if (dis_left < 35 && dis_left > 3 && dis_right < 35 && dis_right > 3){
-      if (dis_left>(dis_right+4)){
+      if (dis_left>(dis_right+4) || (dis_right >0 && dis_right < 5)){
         motion('l');
         //motion('l');
       }
-      else if (dis_left < (dis_right-4)){
+      else if (dis_left < (dis_right-4) || (dis_left >0 && dis_left < 5)){
         motion('r');
         //motion('r');
       }
@@ -900,32 +921,12 @@ void loop() {
 
     command = '*';
 
-    // count_reading = 0;
-    // while(Serial2.available() && (count_reading != 14)) {
-    //     //Serial.print("fpga");
-    //     reading = Serial2.read();  
-    //     //Serial.println(reading,HEX);
-    //     if (reading == 2) {
-    //       to_left = true;
-    //       break;
-    //     }
-    //     else {
-    //       to_left = false;
-    //     }
-    //     if (reading == 3){
-    //       to_right = true;
-    //       break;
-    //     }
-    //     else{
-    //       to_right = false;
-    //     }
-    //     count_reading += 1;
-    // }  
-
   if (finding_target_yaw){
     correct_left_count = 0;
     correct_right_count = 0;
     Serial.print("finding_target_yaw");
+    Serial.print("turning ");
+    Serial.print(turning);
     //angles[-3.1] = false;
         if ((target_yaw < -3.1 && target_yaw >=-3.14) || (target_yaw > 3.1 && target_yaw <= 3.14)){
             if (yaw < -3.09 || yaw > 3.09){
@@ -936,7 +937,7 @@ void loop() {
                 right_turn = false;
                 // client.connect(websockets_server_host, websockets_server_port, "/");
                 // lastConnectionTime = millis();
-                for (int i = 0; i < 300; i++){
+                for (int i = 0; i < 500; i++){
                     motion('f');
                     update_json_file();
                     correct_direction();
@@ -952,13 +953,13 @@ void loop() {
             }
         }
         else {
-            if (yaw < (target_yaw+0.025) && yaw > (target_yaw-0.025)){
+            if (yaw < (target_yaw+0.06) && yaw > (target_yaw-0.06)){
                 //when target_yaw is reached, go forward by 20 steps to avoid checking node again
                 finding_target_yaw = false;
                 one_round = false;
                 left_turn = false;
                 right_turn = false;
-                for (int i = 0; i < 300; i++){
+                for (int i = 0; i < 500; i++){
                     motion('f');
                     update_json_file();
                     correct_direction();
@@ -1012,36 +1013,19 @@ void loop() {
     else {
       correct_left_count = 0;
       correct_right_count = 0;
-      //check ultrasonic sensor readings to determine whether it is a node     
-      // us1 = sonar1.ping();
-      // dis_left = sonar1.convert_cm(us1);
-      // us2 = sonar2.ping();
-      // dis_right = sonar2.convert_cm(us2);
-
-      // Serial.print("dis_right: ");
-      // Serial.print(dis_right);
-
-      // if (dis_left >4 && dis_left <26 ){
-      //   position_ll2[0]=position[0]+d1*cos(yaw)+dis_left*sin(yaw)/100;
-      //   position_ll2[1]=position[1]+d1*sin(yaw)+dis_left*cos(yaw)/100;
-      // }
-
-      // if (dis_right >4 && dis_right <26 ){
-      //   position_rl2[0]=position[0]+d1*cos(yaw)-dis_right*sin(yaw)/100;
-      //   position_rl2[1]=position[1]+d1*sin(yaw)-dis_right*cos(yaw)/100;
-      // }
+      
      check_node();
       
     //to determine whether current position is a node
     nodeflag = nodeflag_left || nodeflag_right;
-      Serial.print("nodeflag ");
-      // Serial.print(" ");
-      Serial.print(nodeflag);
+      // Serial.print("nodeflag ");
+      // // Serial.print(" ");
+      // Serial.print(nodeflag);
 
-      Serial.print(" dis_left ");
-      Serial.print(dis_left);
-      Serial.print(" dis_right ");
-      Serial.print(dis_right);
+       Serial.print(" dis_left ");
+       Serial.print(dis_left);
+       Serial.print(" dis_right ");
+       Serial.print(dis_right);
 
       // Serial.print("yaw");
       // Serial.println(yaw);
@@ -1056,44 +1040,86 @@ void loop() {
       std::vector<int> node_coord = is_node(x,y,nodes);
       // Serial.print ("is_node return: ");
       // Serial.print(node_coord[1]);
-      
+
+      // count_reading = 0;
+      // while(Serial2.available() || count_reading !=80) {
+      //   Serial.print("fpga");
+      //   //reading = Serial2.read(); 
+      //   Serial.print(Serial2.read(),HEX);
+      //   count_reading += 1;
+      //   if (reading == 5){
+      //     Serial.print(reading);
+      //     Serial.print("fpga");
+      //     stop_ahead = true;
+      //     break;
+      //   }
+      // }
+
+       Serial.print("fpga");
+       Serial.print(reading);
+      for (int i = 0; i<10; i++){
+        if (reading == 5){
+          stop_ahead = true;
+          break;
+        }
+        else {
+          stop_ahead = false;
+        }
+      }
+          
       if (nodeflag && node_coord[1]==555){
         //Serial.println("new_node");
         //Serial.println(path_right);
-          if (nodeflag && !turning){
+          if (!turning){
             
-            for (int i = 0; i<140; i++){//was 110, 130
+            for (int i = 0; i<500; i++){//was 140
               motion('f');
               update_json_file();
-              check_node();
+              //check_node();
+              Serial.print("500 ");
             }
+            if (dis_left < 35 && dis_left > 3){
+              nodeflag_left = false;
+            }
+            else{
+              nodeflag_left = true;
+            }
+            if (dis_right < 35 && dis_right > 3){
+              nodeflag_right = false;
+            }
+            else{
+              nodeflag_right = true;
+            }
+
             look_ahead = true;
             turning = true;
             initial_yaw = yaw;
             add_node_back(initial_yaw);
-            Serial.print(" nfr ");
-            Serial.print(nodeflag_left);
-            Serial.print(" nfr ");
-            Serial.print(nodeflag_left);
+            // Serial.print(" nfr ");
+            // Serial.print(nodeflag_left);
+            // Serial.print(" nfr ");
+            // Serial.print(nodeflag_right);
             if (nodeflag_left && nodeflag_right){
                 //turn 360 degree
                 one_round = true;
-                Serial.print(" debug a ");
+                //Serial.print(" debug a ");
                 add_node_left(initial_yaw);
                 add_node_right(initial_yaw);
             }
             else if (nodeflag_left){
                 //turn 180 degree to the left
                 left_turn = true;
-                Serial.print(" debug b ");
+                //Serial.print(" debug b ");
                 add_node_left(initial_yaw);
             }
             else if (nodeflag_right){
                 //turn 180 degree to the right
                 right_turn = true;
-                Serial.print(" debug c ");
+                //Serial.print(" debug c ");
                 add_node_right(initial_yaw);
             }
+            nodeflag_left = false;
+            nodeflag_right = false;
           }
 
           else if (look_ahead){
@@ -1133,11 +1159,16 @@ void loop() {
 
           else if ((turning_count > 100) && turning && (yaw >= (initial_yaw - 0.03)) && (yaw < (initial_yaw))){
             turning = false;
+            Serial.print("serial to false");
             finding_target_yaw = true;
             Serial.print("before find target yaw");
             target_yaw = find_target_yaw(initial_yaw, angles);
             Serial.print("after find target yaw");
-            const size_t current_xy = key(x,y);
+            const size_t current_xy = key(position[0],position[1]);
+            Serial.print("node coordinates");
+            Serial.print(position[0]);
+            Serial.print(" ");
+            Serial.print(position[1]);
             nodes[current_xy] = angles;
             angles.clear();
           }
@@ -1147,6 +1178,23 @@ void loop() {
             //delay(10);
             //add_node();
           }
+      }
+
+      else if (stop_ahead){
+        turning_count = 0;
+            if (initial_yaw <= 0){
+              while(!(turning_count > 10 && (yaw >= (initial_yaw +PI - 0.06)) && (yaw < (initial_yaw + PI)))){
+                 motion('r');
+                 turning_count += 1;
+              }
+            }
+            else{
+              while (!(turning_count > 10 && (yaw >= (initial_yaw -PI - 0.06)) && (yaw < (initial_yaw - PI)))){
+                motion('r');
+                turning_count += 1;
+              }
+            }
+          
       }
       else{
         motion('f');
