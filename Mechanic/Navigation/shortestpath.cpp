@@ -306,7 +306,8 @@ void setup() {
   
 }
 
-typedef std::unordered_map<size_t, std::unordered_map<int, bool>> node_map;
+//typedef std::unordered_map<size_t, std::unordered_map<int, bool>> node_map;
+
 coords if_is_node(int x, int y, node_map nodes){
     node_map::iterator it;
     coords coord = make_pair(555,555);

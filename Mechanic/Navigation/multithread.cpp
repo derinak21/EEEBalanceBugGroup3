@@ -234,23 +234,23 @@ void sensor_reading(){
 
 void update_json_file(){
   if (position_p1 != 1000){
-      position_ll[0]=position[0]+d0*cos(yaw)+(position_p1-40)*sin(yaw)*0.545/80;
+      position_ll[0]=position[0]+d0*cos(yaw)+(position_p1-40)*sin(yaw)*54.5/80;
       Serial.print("pos llx");
       Serial.println(position_ll[0]);
     }
     else{
-      position_ll[0] = 4;
+      position_ll[0] = 4000;
     }
-    position_ll[1]=position[1]+d0*sin(yaw)+(position_p1-40)*cos(yaw)*0.545/80;
+    position_ll[1]=position[1]+d0*sin(yaw)+(position_p1-40)*cos(yaw)*54.5/80;
     if (position_p2 != 1000){
-        position_rl[0]=position[0]+d0*cos(yaw)+(position_p2-40)*sin(yaw)*0.545/80;
+        position_rl[0]=position[0]+d0*cos(yaw)+(position_p2-40)*sin(yaw)*54.5/80;
         Serial.print("pos rlx");
         Serial.println(position_rl[0]);
     } 
     else{
-      position_rl[0] = 4;
+      position_rl[0] = 4000;
     }
-    position_rl[1]=position[1]+d0*sin(yaw)+(position_p2-40)*cos(yaw)*0.545/80; 
+    position_rl[1]=position[1]+d0*sin(yaw)+(position_p2-40)*cos(yaw)*54.5/80; 
     //sensor
     if (dis_left >4 && dis_left <26 ){
       position_ll2[0]=position[0]+d1*cos(yaw)+dis_left*sin(yaw)/100;
@@ -280,23 +280,23 @@ void websocket_send(){
         DynamicJsonDocument jsonDocument(2048);
         
         //ROVER POSITION
-        jsonDocument["x_r"] = position[0]*400/3.6 +10;
-        jsonDocument["y_r"] = (3.6-position[1])*400/3.6;
+        jsonDocument["x_r"] = position[0]*400/360 +10;
+        jsonDocument["y_r"] = (3.6-position[1])*400/360;
 
         //LEFT WHITE LED POSITION
-        jsonDocument["x_ll"] = position_ll[0]*400/3.6 + 10;
-        jsonDocument["y_ll"] = (3.6-position_ll[1])*400/3.6;
+        jsonDocument["x_ll"] = position_ll[0]*400/360 + 10;
+        jsonDocument["y_ll"] = (3.6-position_ll[1])*400/360;
 
         
         //RIGHT WHITE LED POSITION         
-        jsonDocument["x_rl"] = position_rl[0]*400/3.6+10;
-        jsonDocument["y_rl"] = (3.6-position_rl[1])*400/3.6;
+        jsonDocument["x_rl"] = position_rl[0]*400/360+10;
+        jsonDocument["y_rl"] = (3.6-position_rl[1])*400/360;
 
-        jsonDocument["x_sll"] = position_ll2[0]*400/3.6+10;
-        jsonDocument["y_sll"] = (3.6-position_ll2[1])*400/3.6;
+        jsonDocument["x_sll"] = position_ll2[0]*400/360+10;
+        jsonDocument["y_sll"] = (3.6-position_ll2[1])*400/360;
 
-        jsonDocument["x_srl"] = position_rl2[0]*400/3.6+10;
-        jsonDocument["y_srl"] = (3.6-position_rl2[1])*400/3.6;
+        jsonDocument["x_srl"] = position_rl2[0]*400/360+10;
+        jsonDocument["y_srl"] = (3.6-position_rl2[1])*400/360;
         
         String output;  // Serialize the JSON document to a string
         serializeJson(jsonDocument, output);
@@ -364,7 +364,7 @@ void setup() {
     pinMode(stepPin2, OUTPUT);
     pinMode(dirPin2, OUTPUT);
     displacement=0.0;
-    wheelc=2*PI*0.0325;
+    wheelc=2*PI*3.25;
 
     // m1.setMaxSpeed(2000);
     // m2.setMaxSpeed(2000);
@@ -467,13 +467,13 @@ void setup() {
 
 std::vector<int> is_node(int x, int y, std::unordered_map<size_t, std::unordered_map<float, bool>> nodes){
     std::unordered_map<size_t, std::unordered_map<float, bool>>::iterator it;
-    std::vector<int> coord(2,555);
+    std::vector<int> coord(2,5555);
     for (it = nodes.begin(); it!=nodes.end(); it++){
         int tmp_x = it->first>>32;
         int tmp_y = it->first - (tmp_x<<32);
         int x_diff = tmp_x-position[0];
         int y_diff = tmp_y-position[1];
-        if (((x_diff>-0.2) && (x_diff<0.2)) && ((y_diff>-0.2) && (y_diff<0.2))){
+        if (((x_diff>-20) && (x_diff<20)) && ((y_diff>-20) && (y_diff<20))){
             coord[0] = tmp_x;
             coord[1] = tmp_y;
             return coord;
@@ -498,7 +498,7 @@ void motion(char command){
             digitalWrite(stepPin, LOW);                 
             digitalWrite(stepPin2, LOW);                   
             delayMicroseconds(200);
-            displacement=wheelc/200;
+            displacement=wheelc/3200;
             Serial.print(" f ");
             // dt=2;
             // displacement=m1.speed()*dt;
@@ -520,7 +520,7 @@ void motion(char command){
           digitalWrite(stepPin, LOW);                 
           digitalWrite(stepPin2, LOW);                   
           delayMicroseconds(800); 
-          displacement=wheelc/200;
+          displacement=wheelc/3200;
           position[0]-=displacement*cos(yaw);
           position[1]-=displacement*sin(yaw); 
           // prevtime=t;         
